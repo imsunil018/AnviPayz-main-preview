@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description"
+            content="AnviPayz Disclaimer: Important limitations around earnings expectations, third-party operator dependency, and service interruptions.">
+        <title>Disclaimer - AnviPayz</title>
+        <link rel="icon" type="image/png" href="favicon.png">
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet">
+        <link
+            href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
+            rel="stylesheet">
+        <style>
+        :root {
+            --bg: #0b0f1a;
+            --surface: #161e2d;
+            --text-main: #ffffff;
+            --text-muted: #8899a6;
+            --primary: #4f46e5;
+            --border: rgba(255, 255, 255, 0.06);
+            --font-family: 'Manrope', sans-serif;
+        }
+        html[data-theme="light"] {
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --text-main: #111827;
+            --text-muted: #4b5563;
+            --primary: #4338ca;
+            --border: rgba(0, 0, 0, 0.05);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: var(--bg); color: var(--text-main); font-family: var(--font-family); line-height: 1.8; -webkit-font-smoothing: antialiased; }
+        .legal-page { max-width: 720px; margin: 0 auto; padding: 4rem 1.5rem; }
+        .nav-back { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--primary); font-weight: 800; margin-bottom: 3rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        header { margin-bottom: 3rem; }
+        h1 { font-size: clamp(2.2rem, 5vw, 3rem); font-weight: 800; margin-bottom: 0.75rem; letter-spacing: -0.04em; line-height: 1.1; }
+        .meta { color: var(--text-muted); font-size: 0.9rem; }
+        .content section { margin-bottom: 3.5rem; }
+        h2 { font-size: 1.6rem; font-weight: 800; margin-bottom: 1.25rem; color: var(--text-main); letter-spacing: -0.02em; }
+        p { margin-bottom: 1.5rem; color: var(--text-muted); font-size: 1.05rem; }
+        ul { margin-bottom: 1.5rem; padding-left: 1.5rem; color: var(--text-muted); }
+        li { margin-bottom: 0.75rem; }
+        strong { color: var(--text-main); }
+        .notice-box { background: var(--surface); border-left: 4px solid var(--primary); padding: 2rem; border-radius: 0 20px 20px 0; margin: 3rem 0; }
+        footer { margin-top: 6rem; padding-top: 2rem; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+        footer a { color: var(--primary); text-decoration: none; margin: 0 0.5rem; }
+        @media (max-width: 640px) { .legal-page { padding: 3rem 1.25rem; } h1 { font-size: 2.2rem; } h2 { font-size: 1.4rem; } .notice-box { padding: 1.5rem; } }
+        </style>
+        <script>
+            (function() {
+                const savedTheme = localStorage.getItem('anvi-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            })();
+        </script>
+    </head>
+    <body>
+        <div class="legal-page">
+            <a href="legal.html" class="nav-back"><i
+                    class="ri-arrow-left-s-line"></i> Legal Center</a>
+            <header>
+                <h1>Disclaimer</h1>
+                <div class="meta">Last updated: March 31, 2026</div>
+            </header>
+            <article class="content">
+                <section>
+                    <h2>1. General information only</h2>
+                    <p>The material on AnviPayz is provided for general
+                        informational purposes. It is not legal, financial, or
+                        investment advice.</p>
+                </section>
+                <section>
+                    <h2>2. Not a guaranteed income</h2>
+                    <p>AnviPayz is a promotional rewards platform. Points and
+                        tokens should not be understood as a promise of fixed
+                        income or guaranteed earnings.</p>
+                </section>
+                <section>
+                    <h2>3. Third-party dependency</h2>
+                    <p>Some features rely on external providers (recharge
+                        partners, payment gateways). We are not responsible for
+                        delays caused solely by those third parties.</p>
+                </section>
+                <div class="notice-box">
+                    <strong>Practical note:</strong> Service availability may
+                    change due to maintenance, traffic load, or partner-side
+                    downtime.
+                </div>
+                <section>
+                    <h2>4. User responsibility</h2>
+                    <p>Users are responsible for entering correct details and
+                        maintaining access to their registered email
+                        account.</p>
+                </section>
+                <section>
+                    <h2>5. Contact</h2>
+                    <p>If you need clarification about this Disclaimer, contact
+                        <strong>anvipayz@gmail.com</strong>.</p>
+                </section>
+            </article>
+            <footer>
+                <a href="privacy.html">Privacy</a> &bull;
+                <a href="terms.html">Terms</a> &bull;
+                <a href="refund.html">Refunds</a>
+            </footer>
+        </div>
+    </body>
+</html>

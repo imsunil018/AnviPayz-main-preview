@@ -1,0 +1,53 @@
+ <!DOCTYPE html>
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reset Password - AnviPayz</title>
+
+        <script>
+        (function() {
+            const savedTheme = localStorage.getItem('anvi-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet">
+        <link href="css/style.css" rel="stylesheet">
+
+        <link rel="icon" type="image/png" href="favicon.png">
+
+    </head>
+    <body>
+
+        <div class="auth-wrapper auth-shell">
+
+            <div class="card auth-card">
+
+                <h1 style="color: var(--primary); margin-bottom: 0.5rem;">Reset
+                    Password</h1>
+                <p style="color: var(--text-muted); margin-bottom: 2rem;">We now
+                    use Secure OTP Login. No password needed!</p>
+
+                <div class="form-group">
+                    <button onclick="window.location.href='index.html'"
+                        class="btn-primary">Back to Login</button>
+                </div>
+
+                <p style="margin-top: 1.5rem; font-size: 0.9rem;">
+                    <a href="index.html"
+                        style="color: var(--text-muted); text-decoration: none;">
+                        <i class="ri-arrow-left-line"></i> Back to Login
+                    </a>
+                </p>
+
+            </div>
+        </div>
+
+        <script type="module" src="js/forgot.js"></script>
+
+    </body>
+</html>
+

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AnviPayz Admin Dashboard</title>
+    <link rel="icon" type="image/png" href="../favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <audio id="notifSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+    <div id="toast-box"></div>
+
+    <div id="authScreen">
+        <div class="auth-box">
+            <p class="auth-label">Secure Access</p>
+            <h1>Anvi<span>Payz</span> Admin</h1>
+            <p class="auth-subtitle">Login with your admin API account to continue.</p>
+            <form id="loginForm">
+                <input type="email" id="loginEmail" class="input" placeholder="Admin email" required>
+                <input type="password" id="loginPassword" class="input" placeholder="Password" required>
+                <button type="submit" class="btn btn-primary btn-block">Login</button>
+            </form>
+            <div class="auth-note">
+                <strong>Tip:</strong> Open this page from <code>http://localhost:5050/admin/dashboard.html</code> or keep your backend running on port <code>5050</code> while using Live Server.
+            </div>
+        </div>
+    </div>
+
+    <div id="appInterface" class="hidden">
+        <div class="app-shell">
+            <aside class="sidebar" id="sidebar">
+                <div class="brand"><i class="ri-shield-star-line"></i> Anvi Admin</div>
+                <div class="nav-list">
+                    <button type="button" class="nav-item active" data-tab="overview"><i class="ri-dashboard-3-line"></i> Overview</button>
+                    <button type="button" class="nav-item" data-tab="leaderboard"><i class="ri-trophy-line"></i> Leaderboard</button>
+                    <button type="button" class="nav-item" data-tab="users"><i class="ri-group-line"></i> Users</button>
+                    <button type="button" class="nav-item" data-tab="tasks"><i class="ri-task-line"></i> Tasks</button>
+                    <button type="button" class="nav-item" data-tab="activity"><i class="ri-pulse-line"></i> Activity</button>
+                </div>
+                <button type="button" class="nav-item nav-logout" id="logoutBtn"><i class="ri-logout-box-line"></i> Logout</button>
+            </aside>
+
+            <div class="main-wrapper">
+                <header class="top-header">
+                    <div class="header-left">
+                        <button class="mobile-toggle" id="mobileToggle" type="button"><i class="ri-menu-2-line"></i></button>
+                        <div>
+                            <h2 id="pageTitle">Overview</h2>
+                            <p class="header-sub">Secure rewards operations console</p>
+                        </div>
+                    </div>
+                    <div class="header-right">
+                        <span class="live-chip" id="liveChip"><i class="ri-radar-line"></i> Live</span>
+                        <span id="headerTime" class="time-chip">--:--</span>
+                        <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                            <i class="ri-moon-line"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="mobile-tabbar" id="mobileTabbar">
+                    <button type="button" class="mobile-tab active" data-tab-jump="overview"><i class="ri-dashboard-3-line"></i><span>Overview</span></button>
+                    <button type="button" class="mobile-tab" data-tab-jump="users"><i class="ri-group-line"></i><span>Users</span></button>
+                    <button type="button" class="mobile-tab" data-tab-jump="tasks"><i class="ri-task-line"></i><span>Tasks</span></button>
+                    <button type="button" class="mobile-tab" data-tab-jump="activity"><i class="ri-pulse-line"></i><span>Activity</span></button>
+                </div>
+
+                <div class="content-scroll">
+                    <section id="overview" class="section active">
+                        <article class="command-card">
+                            <div>
+                                <p class="command-kicker">Control Center</p>
+                                <h3>Track members, rewards, tasks, and live platform movement from one place.</h3>
+                                <p class="command-copy">This admin console now reads real users, reward balances, recent joins, and task activity directly from your backend.</p>
+                            </div>
+                            <div class="command-pills">
+                                <span class="command-pill"><i class="ri-shield-check-line"></i> Secure login</span>
+                                <span class="command-pill"><i class="ri-flashlight-line"></i> Live reward data</span>
+                                <span class="command-pill"><i class="ri-group-line"></i> Member controls</span>
+                            </div>
+                        </article>
+
+                        <div class="insight-grid">
+                            <article class="insight-card">
+                                <p class="insight-label">Top Points Member</p>
+                                <h3 id="overviewTopUser">-</h3>
+                                <p class="insight-copy">Highest live balance across all members.</p>
+                            </article>
+                            <article class="insight-card">
+                                <p class="insight-label">Top Referrer</p>
+                                <h3 id="overviewTopReferrer">-</h3>
+                                <p class="insight-copy">Best-performing referral growth account.</p>
+                            </article>
+                            <article class="insight-card">
+                                <p class="insight-label">Live Status</p>
+                                <h3 id="overviewSyncStatus">Synced</h3>
+                                <p class="insight-copy">Admin console connected to backend data.</p>
+                            </article>
+                        </div>
+
+                        <div class="quick-actions-grid">
+                            <button type="button" class="quick-action-card" id="overviewCreateTaskBtn">
+                                <span class="quick-action-icon"><i class="ri-add-circle-line"></i></span>
+                                <span class="quick-action-copy">
+                                    <strong>Create Task</strong>
+                                    <small>Launch a reward task for members</small>
+                                </span>
+                            </button>
+                            <button type="button" class="quick-action-card" id="overviewGiftAllBtn">
+                                <span class="quick-action-icon"><i class="ri-gift-2-line"></i></span>
+                                <span class="quick-action-copy">
+                                    <strong>Gift Everyone</strong>
+                                    <small>Credit bonus points to all users</small>
+                                </span>
+                            </button>
+                        </div>
+
+                        <div class="stats-grid">
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Total Users</span><i class="ri-team-line"></i></div>
+                                <div class="stat-val" id="statUsers">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Total Points</span><i class="ri-coin-line"></i></div>
+                                <div class="stat-val highlight" id="statBalance">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Total Tokens</span><i class="ri-coin-fill"></i></div>
+                                <div class="stat-val" id="statTokens">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Tokens Converted</span><i class="ri-exchange-funds-line"></i></div>
+                                <div class="stat-val success" id="statTokensConverted">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Users Converted</span><i class="ri-user-follow-line"></i></div>
+                                <div class="stat-val" id="statUsersConverted">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Active Tasks</span><i class="ri-flashlight-line"></i></div>
+                                <div class="stat-val warning" id="statTasks">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Website Visits (24h)</span><i class="ri-bar-chart-grouped-line"></i></div>
+                                <div class="stat-val success" id="statVisits24">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>New Users (30d)</span><i class="ri-user-add-line"></i></div>
+                                <div class="stat-val" id="statJoins30">0</div>
+                            </article>
+                            <article class="stat-card">
+                                <div class="stat-top"><span>Referral Joins (30d)</span><i class="ri-links-line"></i></div>
+                                <div class="stat-val" id="statReferralJoins30">0</div>
+                            </article>
+                        </div>
+
+                        <div class="panel-grid">
+                            <div class="table-card">
+                                <div class="card-head">
+                                    <h3>Recent Logs</h3>
+                                </div>
+                                <div id="miniFeed" class="feed"></div>
+                            </div>
+
+                            <div class="table-card">
+                                <div class="card-head">
+                                    <h3>Live Join Alerts</h3>
+                                </div>
+                                <div id="joinAlerts" class="feed"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="leaderboard" class="section hidden">
+                        <div class="section-head">
+                            <h3>Leaderboard</h3>
+                            <div class="segmented" id="leaderboardMode">
+                                <button type="button" class="segmented-btn active" data-mode="refer">Top Referrals</button>
+                                <button type="button" class="segmented-btn" data-mode="points">Top Points</button>
+                            </div>
+                        </div>
+                        <div class="stats-grid" id="leaderboardTopCards"></div>
+                        <div class="table-card">
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Rank</th>
+                                            <th>User</th>
+                                            <th>Email</th>
+                                            <th id="leaderboardValueHeader">Referrals</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="leaderboardTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="users" class="section hidden">
+                        <div class="section-head users-head">
+                            <div class="users-controls">
+                                <input type="text" id="userSearch" class="input" placeholder="Search name or email...">
+                                <div class="segmented" id="userSortMode">
+                                    <button type="button" class="segmented-btn active" data-sort="newest">Newest</button>
+                                    <button type="button" class="segmented-btn" data-sort="points">Top Points</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="openGiftAllBtn">Gift All Users</button>
+                        </div>
+
+                        <div class="users-quick-stats">
+                            <div class="mini-stat">
+                                <p>Highest Points User</p>
+                                <h4 id="topPointsUser">-</h4>
+                            </div>
+                            <div class="mini-stat">
+                                <p>Highest Referrals User</p>
+                                <h4 id="topReferralUser">-</h4>
+                            </div>
+                        </div>
+
+                        <div class="table-card">
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>User</th>
+                                            <th>Mobile</th>
+                                            <th>Points</th>
+                                            <th>Tokens</th>
+                                            <th>Tokens Converted</th>
+                                            <th>Referrals</th>
+                                            <th>Join Type</th>
+                                            <th>Last Active</th>
+                                            <th>Joined</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="userTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="tasks" class="section hidden">
+                        <div class="section-head">
+                            <h3>Task Management</h3>
+                            <button type="button" class="btn btn-primary" id="openTaskModalBtn">Add Task</button>
+                        </div>
+                        <div class="table-card">
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Title</th>
+                                            <th>Type</th>
+                                            <th>Reward</th>
+                                            <th>Status</th>
+                                            <th>Created</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="taskTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="activity" class="section hidden">
+                        <div class="table-card">
+                            <div class="card-head">
+                                <h3>System Activity</h3>
+                            </div>
+                            <div id="fullFeed" class="feed"></div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="taskModal" class="modal-wrap">
+        <div class="modal">
+            <h3>Create New Task</h3>
+            <form id="taskForm" class="modal-form">
+                <input type="text" id="tTitle" class="input" placeholder="Task title" required>
+                <input type="url" id="tLink" class="input" placeholder="Task link (https://...)" required>
+                <textarea id="tDesc" class="input text-area" placeholder="Description (optional)"></textarea>
+                <input type="number" id="tPoints" class="input" placeholder="Reward points" min="1" required>
+                <select id="tType" class="input">
+                    <option value="daily">Daily</option>
+                    <option value="social">Social</option>
+                    <option value="hot">Hot</option>
+                </select>
+                <label class="checkbox-row">
+                    <input type="checkbox" id="tNotifyUsers">
+                    <span>Send notification to all users about this task</span>
+                </label>
+                <button type="submit" class="btn btn-primary btn-block">Create Task</button>
+                <button type="button" class="btn btn-outline btn-block" data-close-modal="taskModal">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="giftModal" class="modal-wrap">
+        <div class="modal">
+            <h3>Send Gift</h3>
+            <form id="giftForm" class="modal-form">
+                <input type="hidden" id="giftUserId">
+                <input type="text" id="giftTitle" class="input" placeholder="Reason" required>
+                <input type="number" id="giftPoints" class="input" placeholder="Amount" min="1" required>
+                <button type="submit" class="btn btn-primary btn-block">Send Gift</button>
+                <button type="button" class="btn btn-outline btn-block" data-close-modal="giftModal">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="giftAllModal" class="modal-wrap">
+        <div class="modal">
+            <h3>Gift Everyone</h3>
+            <form id="giftAllForm" class="modal-form">
+                <input type="text" id="giftAllTitle" class="input" placeholder="Title" required>
+                <input type="text" id="giftAllMsg" class="input" placeholder="Message" required>
+                <input type="number" id="giftAllPoints" class="input" placeholder="Points" min="1" required>
+                <button type="submit" id="btnGiftAll" class="btn btn-primary btn-block">Send to All</button>
+                <button type="button" class="btn btn-outline btn-block" data-close-modal="giftAllModal">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="overlay" id="sidebarOverlay"></div>
+
+    <script>
+        (function loadLatestAdminScript() {
+            const script = document.createElement("script");
+            script.type = "module";
+            script.src = "dashboard.js?v=" + Date.now();
+            document.body.appendChild(script);
+        })();
+    </script>
+</body>
+</html>

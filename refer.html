@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refer & Earn - AnviPayz</title>
+    <script>
+        (function () {
+            const root = document.documentElement;
+            const savedTheme = localStorage.getItem('anvi-theme') || root.getAttribute('data-theme') || 'dark';
+            root.setAttribute('data-theme', savedTheme);
+            root.classList.toggle('nav-collapsed-pref', localStorage.getItem('anvi-nav-collapsed') === '1');
+        })();
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+        <link rel="stylesheet" href="css/style.css">
+    <style>
+        .ref-progress-bar {
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(124, 137, 255, 0.12);
+            overflow: hidden;
+            margin-top: 0.65rem;
+        }
+
+        .ref-progress-fill {
+            display: block;
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            border-radius: inherit;
+            transition: width 0.3s ease;
+        }
+
+        .segmented {
+            display: inline-flex;
+            gap: 0.4rem;
+            padding: 0.3rem;
+            border-radius: 999px;
+            background: var(--bg-muted);
+            border: 1px solid var(--border);
+        }
+
+        .segmented-btn {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 700;
+            padding: 0.45rem 0.9rem;
+            border-radius: 999px;
+            cursor: pointer;
+        }
+
+        .segmented-btn.active {
+            color: var(--text-main);
+            background: rgba(124, 137, 255, 0.2);
+            box-shadow: 0 6px 14px rgba(93, 108, 247, 0.16);
+        }
+    </style>
+    <link rel="icon" type="image/png" href="favicon.png">
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="overlay"></div>
+
+        <aside class="sidebar">
+            <div class="brand"><i class="ri-wallet-3-fill"></i>
+                AnviPayz</div>
+            <nav class="nav-links">
+                <a href="home.html" class="nav-item"><i class="ri-home-5-line"></i> Dashboard</a>
+                <a href="wallet.html" class="nav-item"><i class="ri-wallet-line"></i> Wallet</a>
+                <a href="tasks.html" class="nav-item"><i class="ri-task-line"></i> Tasks</a>
+                <a href="refer.html" class="nav-item active"><i class="ri-share-forward-line"></i> Refer & Earn</a>
+                <a href="recharge.html" class="nav-item"><i class="ri-flashlight-fill"></i> Recharge <span class="badge-soon">New</span></a>
+                <a href="notifications.html" class="nav-item"><i class="ri-notification-3-line"></i> Notifications</a>
+                <a href="support.html" class="nav-item"><i class="ri-customer-service-2-line"></i> Support</a>
+            </nav>
+            <div class="nav-footer">
+                <a href="index.html" class="nav-item logout-link"><i class="ri-logout-box-r-line"></i> Logout</a>
+            </div>
+        </aside>
+
+        <main class="main-content page-main ref-container">
+            <div class="mobile-header compact-mobile-header">
+                <button class="icon-btn" id="menu-btn"><i class="ri-menu-line"></i></button>
+                <div class="brand app-shell-title">Refer & Earn</div>
+                <div class="mobile-header-actions">
+                    <div id="mobile-token-badge" class="token-badge token-badge--compact">
+                        <i class="ri-coin-fill token-badge__icon"></i>
+                        <span id="mobile-token-count">0.00</span>
+                    </div>
+                    <button class="icon-btn mobile-theme-toggle"><i class="ri-moon-line"></i></button>
+                    <a href="profile.html" class="icon-btn" title="Profile"><i class="ri-user-line"></i></a>
+                </div>
+            </div>
+
+            <header class="topbar">
+                <div class="page-title">
+                    <h1>Refer & Earn</h1>
+                    <p class="page-subtitle">Invite friends and grow your rewards.</p>
+                </div>
+                <div class="topbar-actions">
+                    <div id="header-token-badge" class="token-badge">
+                        <i class="ri-coin-fill token-badge__icon"></i>
+                        <span id="header-token-count">0.00</span> Tokens
+                    </div>
+                    <button class="icon-btn" id="theme-toggle"><i class="ri-moon-line"></i></button>
+                    <a href="profile.html" class="icon-btn" title="Profile"><i class="ri-user-line"></i></a>
+                </div>
+            </header>
+
+            <section class="card refer-hero">
+                <div class="refer-code-label">Your referral code</div>
+                <div id="my-refer-code" class="refer-code-display">ANVI0000</div>
+                                <div class="refer-action-row">
+                    <button id="copy-btn" class="btn-primary btn-primary--light"><i class="ri-file-copy-line"></i> Copy Link</button>
+                    <!-- <button id="share-btn" class="btn-primary btn-primary--ghost"><i class="ri-share-line"></i> Share Invite</button> -->
+                    <button id="invite-now-btn" class="btn-primary btn-primary--ghost"><i class="ri-send-plane-2-line"></i> Invite Now</button>
+                </div>
+            </section>
+
+                        <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon-box" style="background: rgba(59, 130, 246, 0.12); color: #3b82f6;">
+                            <i class="ri-user-add-line"></i>
+                        </div>
+                        <span class="stat-label">Total Referrals</span>
+                    </div>
+                    <div id="total-ref-count" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon-box" style="background: rgba(16, 185, 129, 0.12); color: #10b981;">
+                            <i class="ri-coin-fill"></i>
+                        </div>
+                        <span class="stat-label">Total Earnings</span>
+                    </div>
+                    <div id="total-ref-earnings" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon-box" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b;">
+                            <i class="ri-timer-line"></i>
+                        </div>
+                        <span class="stat-label">Daily Limit</span>
+                    </div>
+                    <div id="daily-limit-text" class="stat-value">0 / 0 Today</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon-box" style="background: rgba(236, 72, 153, 0.12); color: #ec4899;">
+                            <i class="ri-award-fill"></i>
+                        </div>
+                        <span class="stat-label">Pending Rewards</span>
+                    </div>
+                    <div id="pending-ref-rewards" class="stat-value">0</div>
+                </div>
+            </div>
+
+            <div class="page-grid page-grid--two">
+                <div class="card refer-summary-card">
+                    <div class="section-title">Daily Bonus Progress</div>
+                    <div class="summary-value summary-value--primary">
+                        <span id="progress-current">0</span> /
+                        <span id="progress-goal">0</span>
+                    </div>
+                    <div class="ref-progress-bar" aria-label="Daily bonus progress">
+                        <span id="progress-fill" class="ref-progress-fill"></span>
+                    </div>
+                    <div id="bonus-status" class="summary-meta">Invite more friends to unlock rewards.</div>
+                </div>
+                <div id="your-rank-card" class="card refer-summary-card" hidden></div>
+            </div>
+
+            <div class="section-title">How it works</div>
+            <div class="page-grid page-grid--three">
+                <div class="card">
+                    <div class="feature-head">
+                        <div class="feature-icon" style="background: rgba(59, 130, 246, 0.12); color: #3b82f6;">
+                            <i class="ri-share-forward-line"></i>
+                        </div>
+                        <div class="feature-copy">
+                            <h3>Share your code</h3>
+                            <p>Send your referral link to friends and family.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="feature-head">
+                        <div class="feature-icon" style="background: rgba(16, 185, 129, 0.12); color: #10b981;">
+                            <i class="ri-user-smile-line"></i>
+                        </div>
+                        <div class="feature-copy">
+                            <h3>They sign up</h3>
+                            <p>When they join using your code, you get rewarded.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="feature-head">
+                        <div class="feature-icon" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b;">
+                            <i class="ri-award-line"></i>
+                        </div>
+                        <div class="feature-copy">
+                            <h3>Earn rewards</h3>
+                            <p>Track your referral rewards and bonuses here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                        <div class="section-title section-title--spaced">Leaderboard</div>
+            <div class="segmented" role="tablist" aria-label="Leaderboard filter">
+                <button type="button" id="toggle-all" class="segmented-btn active">All Time</button>
+                <button type="button" id="toggle-weekly" class="segmented-btn">This Week</button>
+            </div>
+            <div id="leaderboard-container" class="card" style="margin-top: 1rem;">
+                <div id="leaderboard-list" class="stack-list">
+                    <div class="empty-state">
+                        <i class="ri-trophy-line"></i>
+                        <p>No leaderboard data yet.</p>
+                    </div>
+                </div>
+            </div>
+<div class="section-title section-title--spaced">Your Referral Network</div>
+            <div id="referral-list" class="stack-list">
+                <div class="loading-block">
+                    <div class="spinner"></div>
+                    Loading referrals...
+                </div>
+            </div>
+
+            <footer class="app-footer">
+                <a href="privacy.html" target="_blank">Privacy Policy</a>
+                <span>�</span>
+                <a href="terms.html" target="_blank">Terms & Conditions</a>
+                <span>�</span>
+                <a href="refund.html" target="_blank">Refund Policy</a>
+                <span>�</span>
+                <a href="disclaimer.html" target="_blank">Disclaimer</a>
+            </footer>
+        </main>
+
+        <nav class="mobile-nav">
+            <a href="home.html" class="mobile-nav-item"><i
+                    class="ri-home-5-line"></i><span>Home</span></a>
+            <a href="wallet.html" class="mobile-nav-item"><i
+                    class="ri-wallet-line"></i><span>Wallet</span></a>
+            <a href="recharge.html" class="mobile-nav-item"><i
+                    class="ri-flashlight-fill"></i><span>Recharge</span></a>
+            <a href="tasks.html" class="mobile-nav-item"><i
+                    class="ri-task-line"></i><span>Tasks</span></a>
+            <a href="refer.html" class="mobile-nav-item active"><i
+                    class="ri-share-forward-line"></i><span>Refer</span></a>
+        </nav>
+    </div>
+
+    <script type="module" src="js/auth.js?v=20260330"></script>
+</body>
+
+</html>

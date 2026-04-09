@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support - AnviPayz</title>
+    <script>
+        (function () {
+            const root = document.documentElement;
+            const savedTheme = localStorage.getItem('anvi-theme') || root.getAttribute('data-theme') || 'dark';
+            root.setAttribute('data-theme', savedTheme);
+            root.classList.toggle('nav-collapsed-pref', localStorage.getItem('anvi-nav-collapsed') === '1');
+        })();
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="overlay"></div>
+
+        <aside class="sidebar">
+            <div class="brand"><i class="ri-wallet-3-fill"></i>
+                AnviPayz</div>
+            <nav class="nav-links">
+                <a href="home.html" class="nav-item"><i class="ri-home-5-line"></i> Dashboard</a>
+                <a href="wallet.html" class="nav-item"><i class="ri-wallet-line"></i> Wallet</a>
+                <a href="tasks.html" class="nav-item"><i class="ri-task-line"></i> Tasks</a>
+                <a href="refer.html" class="nav-item"><i class="ri-share-forward-line"></i> Refer & Earn</a>
+                <a href="recharge.html" class="nav-item"><i class="ri-flashlight-fill"></i> Recharge <span
+                        class="badge-soon">New</span></a>
+                <a href="notifications.html" class="nav-item"><i class="ri-notification-3-line"></i>
+                    Notifications</a>
+                <a href="support.html" class="nav-item active"><i class="ri-customer-service-2-line"></i> Support</a>
+            </nav>
+            <div class="nav-footer">
+                <a href="index.html" class="nav-item logout-link"><i class="ri-logout-box-r-line"></i> Logout</a>
+            </div>
+        </aside>
+
+        <main class="main-content page-main">
+            <div class="mobile-header compact-mobile-header">
+                <button class="icon-btn" id="menu-btn"><i class="ri-menu-line"></i></button>
+                <div class="brand app-shell-title">Support</div>
+                <div class="mobile-header-actions">
+                    <div id="mobile-token-badge" class="token-badge token-badge--compact">
+                        <i class="ri-coin-fill token-badge__icon"></i>
+                        <span id="mobile-token-count">0.00</span>
+                    </div>
+                    <button class="icon-btn mobile-theme-toggle"><i class="ri-moon-line"></i></button>
+                    <a href="profile.html" class="icon-btn" title="Profile"><i class="ri-user-line"></i></a>
+                </div>
+            </div>
+
+            <header class="topbar">
+                <div class="page-title">
+                    <h1>Support Center</h1>
+                    <p class="page-subtitle">We are here to help you resolve issues quickly.</p>
+                </div>
+                <div class="topbar-actions">
+                    <div id="header-token-badge" class="token-badge">
+                        <i class="ri-coin-fill token-badge__icon"></i>
+                        <span id="header-token-count">0.00</span> Tokens
+                    </div>
+                    <button class="icon-btn" id="theme-toggle"><i class="ri-moon-line"></i></button>
+                    <a href="profile.html" class="icon-btn" title="Profile"><i class="ri-user-line"></i></a>
+                </div>
+            </header>
+
+            <div class="support-layout">
+                <section class="support-stack">
+                    <section class="card support-card support-panel">
+                        <div class="support-card-head">
+                            <h3>Contact support</h3>
+                            <p class="contact-note">Fast help via WhatsApp or email. We usually respond within 24 hours.</p>
+                        </div>
+                        <div class="support-action-row">
+                            <a class="support-action-btn whatsapp"
+                                href="https://wa.me/917524822258?text=Hello%20I%20need%20help%20with%20AnviPayz"
+                                target="_blank" rel="noopener">
+                                <span class="support-action-icon"><i class="ri-whatsapp-line"></i></span>
+                                <span class="support-action-copy">
+                                    <span class="support-action-title">WhatsApp Support</span>
+                                    <span class="support-action-sub">Instant chat</span>
+                                </span>
+                                <i class="ri-arrow-right-up-line"></i>
+                            </a>
+                            <a class="support-action-btn email" href="mailto:anvipayz@gmail.com">
+                                <span class="support-action-icon"><i class="ri-mail-line"></i></span>
+                                <span class="support-action-copy">
+                                    <span class="support-action-title">Email Support</span>
+                                    <span class="support-action-sub">anvipayz@gmail.com</span>
+                                </span>
+                                <i class="ri-arrow-right-up-line"></i>
+                            </a>
+                        </div>
+                    </section>
+
+                    <section class="card support-form-card support-panel">
+                        <div class="support-card-head">
+                            <h3>Send us a message</h3>
+                            <p class="contact-note">Share the issue details and we will get back to you soon.</p>
+                        </div>
+                        <form id="support-form" class="support-form">
+                            <label class="support-field">
+                                <span>Full Name</span>
+                                <input class="form-input" type="text" id="support-name" placeholder="Your name">
+                            </label>
+                            <label class="support-field">
+                                <span>Email</span>
+                                <input class="form-input" type="email" id="support-email" placeholder="name@example.com">
+                            </label>
+                            <label class="support-field">
+                                <span>Issue Type</span>
+                                <select class="form-input" id="support-issue">
+                                    <option value="General">General</option>
+                                    <option value="Rewards">Rewards & points</option>
+                                    <option value="Wallet">Wallet & tokens</option>
+                                    <option value="Tasks">Tasks</option>
+                                    <option value="Login">Login / OTP</option>
+                                    <option value="Referral">Referral</option>
+                                </select>
+                            </label>
+                            <label class="support-field">
+                                <span>Message</span>
+                                <textarea class="form-input" id="support-message" rows="5"
+                                    placeholder="Describe your issue..."></textarea>
+                            </label>
+                            <button type="submit" class="btn-primary support-submit">
+                                <i class="ri-send-plane-line"></i> Send Support Email
+                            </button>
+                        </form>
+                    </section>
+                </section>
+
+                <section class="card faq-card">
+                    <h3>Frequently asked questions</h3>
+                    <div class="faq-list">
+                        <details class="faq-item">
+                            <summary><i class="ri-question-line"></i> Why is my reward pending?</summary>
+                            <p>Rewards appear after the task is verified. Refresh the page or check again in a few minutes.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary><i class="ri-question-line"></i> I did not receive my referral bonus.</summary>
+                            <p>Referral bonuses are credited after the invited user completes sign-up and verification.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary><i class="ri-question-line"></i> How do I reset my login email?</summary>
+                            <p>Go to Profile and request an email change. You will verify both current and new emails.</p>
+                        </details>
+                        <details class="faq-item">
+                            <summary><i class="ri-question-line"></i> What if my OTP is not arriving?</summary>
+                            <p>Please check spam or wait 30 seconds before requesting again. If it still fails, contact support below.</p>
+                        </details>
+                    </div>
+                </section>
+            </div>
+
+            <footer class="app-footer">
+                <a href="privacy.html" target="_blank">Privacy Policy</a>
+                <span>&bull;</span>
+                <a href="terms.html" target="_blank">Terms & Conditions</a>
+                <span>&bull;</span>
+                <a href="refund.html" target="_blank">Refund Policy</a>
+                <span>&bull;</span>
+                <a href="disclaimer.html" target="_blank">Disclaimer</a>
+            </footer>
+        </main>
+
+        <nav class="mobile-nav">
+            <a href="home.html" class="mobile-nav-item"><i
+                    class="ri-home-5-line"></i><span>Home</span></a>
+            <a href="wallet.html" class="mobile-nav-item"><i
+                    class="ri-wallet-line"></i><span>Wallet</span></a>
+            <a href="recharge.html" class="mobile-nav-item"><i
+                    class="ri-flashlight-fill"></i><span>Recharge</span></a>
+            <a href="tasks.html" class="mobile-nav-item"><i
+                    class="ri-task-line"></i><span>Tasks</span></a>
+            <a href="support.html" class="mobile-nav-item active"><i
+                    class="ri-customer-service-2-line"></i><span>Support</span></a>
+        </nav>
+    </div>
+
+    <script type="module" src="js/auth.js?v=20260330"></script>
+    <script>
+        (function () {
+            const form = document.getElementById('support-form');
+            if (!form) return;
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('support-name')?.value.trim() || 'User';
+                const email = document.getElementById('support-email')?.value.trim() || 'Not provided';
+                const issue = document.getElementById('support-issue')?.value || 'General';
+                const message = document.getElementById('support-message')?.value.trim() || 'No message provided.';
+                const subject = `[Support] ${issue} - ${name}`;
+                const body = `Name: ${name}%0D%0AEmail: ${email}%0D%0AIssue: ${issue}%0D%0A%0D%0AMessage:%0D%0A${encodeURIComponent(message)}`;
+                window.location.href = `mailto:anvipayz@gmail.com?subject=${encodeURIComponent(subject)}&body=${body}`;
+            });
+        })();
+    </script>
+</body>
+
+</html>

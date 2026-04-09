@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description"
+            content="AnviPayz Legal Center: Access Privacy Policy, Terms & Conditions, Refund Policy, and Disclaimer.">
+        <title>Legal Center - AnviPayz</title>
+        <link rel="icon" type="image/png" href="favicon.png">
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet">
+        <link
+            href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
+            rel="stylesheet">
+        <style>
+        :root {
+            --bg: #0b0f1a;
+            --surface: #161e2d;
+            --surface-hover: #1e293b;
+            --text-main: #ffffff;
+            --text-muted: #8899a6;
+            --primary: #4f46e5;
+            --primary-glow: rgba(79, 70, 229, 0.3);
+            --border: rgba(255, 255, 255, 0.06);
+            --font-family: 'Manrope', sans-serif;
+        }
+
+        html[data-theme="light"] {
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --surface-hover: #f9fafb;
+            --text-main: #111827;
+            --text-muted: #4b5563;
+            --primary: #4338ca;
+            --primary-glow: rgba(67, 56, 202, 0.1);
+            --border: rgba(0, 0, 0, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            background-color: var(--bg); 
+            color: var(--text-main); 
+            font-family: var(--font-family); 
+            line-height: 1.6; 
+            transition: background 0.3s ease;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .legal-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 4rem 1.5rem;
+        }
+
+        .legal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5rem;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+            font-weight: 800;
+            font-size: 1.4rem;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-icon {
+            background: var(--primary);
+            color: white;
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            font-size: 1rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            padding: 0.7rem 1.4rem;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            text-decoration: none;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-main);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn:hover { 
+            background: var(--surface-hover);
+            transform: translateY(-2px);
+            border-color: var(--primary);
+        }
+
+        .legal-hero {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .legal-hero h1 {
+            font-size: clamp(2.5rem, 6vw, 3.5rem);
+            font-weight: 800;
+            margin-bottom: 1rem;
+            letter-spacing: -0.04em;
+            background: linear-gradient(to right, var(--text-main), var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .legal-hero p {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            max-width: 550px;
+            margin: 0 auto;
+            font-weight: 500;
+        }
+
+        .legal-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem;
+        }
+
+        .legal-card {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 28px;
+            border: 1px solid var(--border);
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .legal-card:hover {
+            transform: translateY(-6px);
+            border-color: var(--primary);
+            box-shadow: 0 20px 40px -15px var(--primary-glow);
+        }
+
+        .legal-card h2 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            letter-spacing: -0.02em;
+        }
+
+        .legal-card h2 i {
+            font-size: 1.2rem;
+            color: var(--primary);
+            opacity: 0.5;
+            transition: transform 0.3s ease;
+        }
+
+        .legal-card:hover h2 i {
+            transform: translateX(5px);
+            opacity: 1;
+        }
+
+        .legal-card p {
+            color: var(--text-muted);
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+            flex-grow: 1;
+            line-height: 1.5;
+        }
+
+        .legal-tag {
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--primary);
+            background: var(--primary-glow);
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            width: fit-content;
+        }
+
+        .legal-footer {
+            margin-top: 5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .legal-footer a { color: var(--primary); text-decoration: none; }
+
+        @media (max-width: 800px) {
+            .legal-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 640px) {
+            .legal-container { padding: 2rem 1rem; }
+            .legal-header { margin-bottom: 2.5rem; }
+            .legal-hero { margin-bottom: 2rem; }
+            .legal-card { padding: 1.75rem; border-radius: 24px; }
+        }
+    </style>
+        <script>
+        (function() {
+            const savedTheme = localStorage.getItem('anvi-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+    </head>
+    <body>
+        <div class="legal-container">
+            <header class="legal-header">
+                <a href="legal.html" class="brand">
+                    <div class="brand-icon">AP</div>
+                    <span>AnviPayz</span>
+                </a>
+                <div class="header-actions">
+                    <button class="btn" id="theme-toggle-btn" title="Toggle Theme">
+                        <i class="ri-moon-line"></i>
+                    </button>
+                    <a href="index.html" class="btn">Website</a>
+                </div>
+            </header>
+
+            <main>
+                <section class="legal-hero">
+                    <h1>Trust Center</h1>
+                    <p>Our commitment to transparency and member security.
+                        Explore our policies and guidelines.</p>
+                </section>
+
+                <div class="legal-grid">
+                    <a href="privacy.html" class="legal-card">
+                        <h2>Privacy Policy <i
+                                class="ri-arrow-right-line"></i></h2>
+                        <p>Understand how we collect, process, and protect your
+                            personal and activity data.</p>
+                        <span class="legal-tag">Data Protection</span>
+                    </a>
+
+                    <a href="terms.html" class="legal-card">
+                        <h2>Terms of Service <i
+                                class="ri-arrow-right-line"></i></h2>
+                        <p>The rules and guidelines for using our rewards
+                            system, accounts, and services.</p>
+                        <span class="legal-tag">Agreement</span>
+                    </a>
+
+                    <a href="refund.html" class="legal-card">
+                        <h2>Refund Policy <i
+                                class="ri-arrow-right-line"></i></h2>
+                        <p>Guidelines for recharge disputes, payment errors, and
+                            reward balance clarifications.</p>
+                        <span class="legal-tag">Payments</span>
+                    </a>
+
+                    <a href="disclaimer.html" class="legal-card">
+                        <h2>Disclaimer <i class="ri-arrow-right-line"></i></h2>
+                        <p>Important limitations regarding service availability
+                            and earnings expectations.</p>
+                        <span class="legal-tag">Legal Limits</span>
+                    </a>
+                </div>
+            </main>
+
+            <footer class="legal-footer">
+                Need clarification? Email us at <a
+                    href="mailto:anvipayz@gmail.com">anvipayz@gmail.com</a>
+            </footer>
+        </div>
+
+        <script>
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            const root = document.documentElement;
+            const currentTheme = root.getAttribute('data-theme');
+            const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            root.setAttribute('data-theme', nextTheme);
+            localStorage.setItem('anvi-theme', nextTheme);
+            document.querySelector('#theme-toggle i').className = nextTheme === 'dark' ? 'ri-moon-line' : 'ri-sun-line';
+        });
+
+        // Set initial icon
+        window.addEventListener('DOMContentLoaded', () => {
+            const theme = document.documentElement.getAttribute('data-theme');
+            document.querySelector('#theme-toggle i').className = theme === 'dark' ? 'ri-moon-line' : 'ri-sun-line';
+        });
+    </script>
+    </body>
+</html>

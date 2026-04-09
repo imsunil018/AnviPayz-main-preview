@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description"
+            content="AnviPayz Refund Policy: Guidelines for recharge disputes, refund requests, payment errors, and virtual balance clarifications.">
+        <title>Refund Policy - AnviPayz</title>
+        <link rel="icon" type="image/png" href="favicon.png">
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet">
+        <link
+            href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
+            rel="stylesheet">
+        <style>
+        :root {
+            --bg: #0b0f1a;
+            --surface: #161e2d;
+            --text-main: #ffffff;
+            --text-muted: #8899a6;
+            --primary: #4f46e5;
+            --border: rgba(255, 255, 255, 0.06);
+            --font-family: 'Manrope', sans-serif;
+        }
+        html[data-theme="light"] {
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --text-main: #111827;
+            --text-muted: #4b5563;
+            --primary: #4338ca;
+            --border: rgba(0, 0, 0, 0.05);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: var(--bg); color: var(--text-main); font-family: var(--font-family); line-height: 1.8; -webkit-font-smoothing: antialiased; }
+        .legal-page { max-width: 720px; margin: 0 auto; padding: 4rem 1.5rem; }
+        .nav-back { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--primary); font-weight: 800; margin-bottom: 3rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        header { margin-bottom: 3rem; }
+        h1 { font-size: clamp(2.2rem, 5vw, 3rem); font-weight: 800; margin-bottom: 0.75rem; letter-spacing: -0.04em; line-height: 1.1; }
+        .meta { color: var(--text-muted); font-size: 0.9rem; }
+        .content section { margin-bottom: 3.5rem; }
+        h2 { font-size: 1.6rem; font-weight: 800; margin-bottom: 1.25rem; color: var(--text-main); letter-spacing: -0.02em; }
+        p { margin-bottom: 1.5rem; color: var(--text-muted); font-size: 1.05rem; }
+        ul { margin-bottom: 1.5rem; padding-left: 1.5rem; color: var(--text-muted); }
+        li { margin-bottom: 0.75rem; }
+        strong { color: var(--text-main); }
+        .notice-box { background: var(--surface); border-left: 4px solid var(--primary); padding: 2rem; border-radius: 0 20px 20px 0; margin: 3rem 0; }
+        footer { margin-top: 6rem; padding-top: 2rem; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+        footer a { color: var(--primary); text-decoration: none; margin: 0 0.5rem; }
+        @media (max-width: 640px) { .legal-page { padding: 3rem 1.25rem; } h1 { font-size: 2.2rem; } h2 { font-size: 1.4rem; } .notice-box { padding: 1.5rem; } }
+        </style>
+        <script>
+            (function() {
+                const savedTheme = localStorage.getItem('anvi-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', savedTheme);
+            })();
+        </script>
+    </head>
+    <body>
+        <div class="legal-page">
+            <a href="legal.html" class="nav-back"><i
+                    class="ri-arrow-left-s-line"></i> Legal Center</a>
+            <header>
+                <h1>Refund Policy</h1>
+                <div class="meta">Last updated: March 31, 2026</div>
+            </header>
+            <article class="content">
+                <section>
+                    <h2>1. Virtual rewards</h2>
+                    <p>Points, tokens, signup bonuses, and task rewards
+                        displayed inside AnviPayz are generally non-refundable
+                        and non-withdrawable unless we expressly announce a
+                        different policy for a specific campaign.</p>
+                </section>
+                <section>
+                    <h2>2. Recharge-related payments</h2>
+                    <p>If AnviPayz accepts a recharge-related payment, refund
+                        requests depend on the final transaction status from the
+                        operator.</p>
+                    <ul>
+                        <li>If the recharge succeeds, the transaction is treated
+                            as completed.</li>
+                        <li>If the recharge fails, we may process a correction
+                            or refund after verification.</li>
+                    </ul>
+                </section>
+                <div class="notice-box">
+                    <strong>Please note:</strong> A refund request does not
+                    guarantee refund approval. Each case requires verification
+                    from internal logs and third-party provider responses.
+                </div>
+                <section>
+                    <h2>3. Token conversion</h2>
+                    <p>When points are converted into tokens inside the
+                        platform, the action is treated as an internal balance
+                        conversion. These conversions are generally not
+                        reversible.</p>
+                </section>
+                <section>
+                    <h2>4. How to contact support</h2>
+                    <p>For refund or recharge disputes, email
+                        <strong>anvipayz@gmail.com</strong> with your registered
+                        email, transaction date, and payment proof.</p>
+                </section>
+            </article>
+            <footer>
+                <a href="privacy.html">Privacy</a> &bull;
+                <a href="terms.html">Terms</a> &bull;
+                <a href="disclaimer.html">Disclaimer</a>
+            </footer>
+        </div>
+    </body>
+</html>

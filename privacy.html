@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Privacy Policy - AnviPayz</title>
+        <link rel="icon" type="image/png" href="favicon.png">
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+            rel="stylesheet">
+        <link
+            href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
+            rel="stylesheet">
+        <style>
+        :root {
+            --bg: #0b0f1a;
+            --surface: #161e2d;
+            --text-main: #ffffff;
+            --text-muted: #8899a6;
+            --primary: #4f46e5;
+            --border: rgba(255, 255, 255, 0.06);
+            --font-family: 'Manrope', sans-serif;
+        }
+        html[data-theme="light"] {
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --text-main: #111827;
+            --text-muted: #4b5563;
+            --primary: #4338ca;
+            --border: rgba(0, 0, 0, 0.05);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            background-color: var(--bg); 
+            color: var(--text-main); 
+            font-family: var(--font-family); 
+            line-height: 1.8; 
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .legal-page { 
+            max-width: 720px; 
+            margin: 0 auto; 
+            padding: 4rem 1.5rem; 
+        }
+
+        .nav-back { 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 8px; 
+            text-decoration: none; 
+            color: var(--primary); 
+            font-weight: 800; 
+            margin-bottom: 3rem; 
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        header { margin-bottom: 3rem; }
+        
+        h1 { 
+            font-size: clamp(2.2rem, 5vw, 3rem); 
+            font-weight: 800; 
+            margin-bottom: 0.75rem; 
+            letter-spacing: -0.04em; 
+            line-height: 1.1;
+        }
+
+        .meta { color: var(--text-muted); font-size: 0.9rem; }
+        
+        .content section { margin-bottom: 3.5rem; }
+        
+        h2 { 
+            font-size: 1.6rem; 
+            font-weight: 800; 
+            margin-bottom: 1.25rem; 
+            color: var(--text-main); 
+            letter-spacing: -0.02em;
+        }
+
+        p { margin-bottom: 1.5rem; color: var(--text-muted); font-size: 1.05rem; }
+        ul { margin-bottom: 1.5rem; padding-left: 1.5rem; color: var(--text-muted); }
+        li { margin-bottom: 0.75rem; }
+        strong { color: var(--text-main); }
+
+        .notice-box { 
+            background: var(--surface); 
+            border-left: 4px solid var(--primary); 
+            padding: 2rem; 
+            border-radius: 0 20px 20px 0; 
+            margin: 3rem 0; 
+        }
+
+        footer { 
+            margin-top: 6rem; padding-top: 2rem; border-top: 1px solid var(--border);
+            text-align: center; color: var(--text-muted); font-size: 0.9rem;
+        }
+
+        footer a { color: var(--primary); text-decoration: none; margin: 0 0.5rem; }
+
+        @media (max-width: 640px) {
+            .legal-page { padding: 3rem 1.25rem; }
+            h1 { font-size: 2.2rem; }
+            h2 { font-size: 1.4rem; }
+            .notice-box { padding: 1.5rem; }
+        }
+    </style>
+        <script>
+        (function() {
+            const savedTheme = localStorage.getItem('anvi-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+    </head>
+    <body>
+        <div class="legal-page">
+            <a href="legal.html" class="nav-back"><i
+                    class="ri-arrow-left-s-line"></i> Legal Center</a>
+
+            <header>
+                <h1>Privacy Policy</h1>
+                <div class="meta">Last updated: March 31, 2026</div>
+            </header>
+
+            <article class="content">
+                <section>
+                    <h2>1. Who this policy applies to</h2>
+                    <p>This policy applies to visitors, registered users, and
+                        members who access AnviPayz through our website, login
+                        system, referral pages, wallet pages, task pages,
+                        recharge flow, and support channels.</p>
+                </section>
+
+                <section>
+                    <h2>2. Information we collect</h2>
+                    <p>We collect information that is reasonably necessary to
+                        run AnviPayz and secure member accounts.</p>
+                    <ul>
+                        <li><strong>Account details:</strong> Your name, email
+                            address, referral code, and optional mobile
+                            number.</li>
+                        <li><strong>Security data:</strong> OTP requests, login
+                            timestamps, and verification status.</li>
+                        <li><strong>Rewards data:</strong> Points earned, tokens
+                            converted, and wallet history.</li>
+                        <li><strong>Support information:</strong> Messages you
+                            send to us through support channels.</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h2>3. How we use your information</h2>
+                    <p>We use collected information to operate, improve, and
+                        protect the AnviPayz experience.</p>
+                    <ul>
+                        <li>To manage member accounts and notifications.</li>
+                        <li>To calculate balances and referral bonuses.</li>
+                        <li>To prevent fraudulent activity and misuse of
+                            offers.</li>
+                        <li>To provide customer support and resolve
+                            disputes.</li>
+                    </ul>
+                </section>
+
+                <div class="notice-box">
+                    <strong>Important:</strong> OTP codes are meant only for
+                    secure account access. You should never share your OTP with
+                    anyone claiming to be from AnviPayz.
+                </div>
+
+                <section>
+                    <h2>4. Data retention</h2>
+                    <p>We keep information only for as long as it is reasonably
+                        needed for account access, reward management, legal
+                        obligations, and security checks.</p>
+                    <p>If you delete your account, we will stop using personal
+                        information except where limited retention is necessary
+                        for fraud prevention or regulatory compliance.</p>
+                </section>
+
+                <section>
+                    <h2>5. Data security</h2>
+                    <p>We use reasonable administrative and technical measures
+                        to protect stored information. However, no
+                        internet-based system can promise absolute security.</p>
+                </section>
+
+                <section>
+                    <h2>6. Contact us</h2>
+                    <p>For privacy-related questions, contact us at
+                        <strong>anvipayz@gmail.com</strong>. Please include your
+                        registered email address.</p>
+                </section>
+            </article>
+
+            <footer>
+                <a href="terms.html">Terms</a> &bull;
+                <a href="refund.html">Refunds</a> &bull;
+                <a href="disclaimer.html">Disclaimer</a>
+            </footer>
+        </div>
+    </body>
+</html>
