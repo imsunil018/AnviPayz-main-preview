@@ -1,15 +1,22 @@
 const APP_VERSION = "2026-03-30-production";
 
-// API Base URL - Auto-detect based on environment
-// Local dev (port 5501 with Live Server): http://127.0.0.1:5050/api
-// Vercel deployment: /api (relative path)
+// API Base URL - configured via config.js (or local override in localStorage)
 const storedApiBase = (localStorage.getItem("anvi-api-base") || "").trim();
 const isLocalDev = window.location.protocol === "file:" ||
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1" ||
     window.location.host.includes("localhost") ||
     window.location.host.includes("127.0.0.1");
-const API_BASE = storedApiBase || (isLocalDev ? "http://127.0.0.1:5050/api" : "/api");
+
+function normalizeApiBase(value) {
+    return String(value || "")
+        .trim()
+        .replace(/\/+$/, "")
+        .replace(/\/api$/, "");
+}
+
+const API_BASE = normalizeApiBase(window.API_BASE || storedApiBase || (isLocalDev ? "http://127.0.0.1:5050" : "https://anvipayz-main-preview-1.onrender.com"));
+const API_PREFIX = "/api";
 
 const INDIA_TIME_ZONE = "Asia/Kolkata";
 const inflightRequests = new Map();
@@ -3201,7 +3208,7 @@ async function requestJson(path, { method = "GET", body, auth = true } = {}) {
     }
 
     let response;
-    const url = `${API_BASE}${path.startsWith("/") ? "" : "/"}${path}`;
+    const url = `${API_BASE}${API_PREFIX}${path.startsWith("/") ? "" : "/"}${path}`;
     const requestKey = method === "GET" && body === undefined
         ? `${method}:${url}:${auth ? state.token : ""}`
         : "";

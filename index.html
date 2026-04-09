@@ -1772,10 +1772,11 @@
         });
     </script>
 
+            <script src="config.js"></script>
             <script type="module" src="js/auth.js"></script>
             <script>
                 (function () {
-                    const API_BASE = '/api';
+                    const API_BASE_URL = (typeof API_BASE !== "undefined" ? API_BASE : "https://anvipayz-main-preview-1.onrender.com").replace(/\/+$/, "");
                     const API = {
                         sendOtp: '/send-otp',
                         verifyOtp: '/verify-otp',
@@ -1785,7 +1786,7 @@
                     };
 
                     async function apiRequest(path, options = {}) {
-                        const response = await fetch(`${API_BASE}${path}`, {
+                        const response = await fetch(`${API_BASE_URL}/api${path.startsWith("/") ? "" : "/"}${path}`, {
                             method: options.method || 'GET',
                             headers: { 'Content-Type': 'application/json' },
                             body: options.body ? JSON.stringify(options.body) : undefined

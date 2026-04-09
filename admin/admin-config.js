@@ -1,16 +1,8 @@
-const localAdminApiBase = (() => {
-    const host = window.location.hostname || "";
-    const isLocalHost = host === "localhost" || host === "127.0.0.1";
-    const isFilePreview = window.location.protocol === "file:";
+const fallbackApiBase = "https://anvipayz-main-preview-1.onrender.com";
+const resolvedApiBase = String(window.API_BASE || fallbackApiBase).replace(/\/+$/, "");
+const defaultAdminApiBase = `${resolvedApiBase}/api/admin`;
 
-    if (isFilePreview || isLocalHost) {
-        return "http://127.0.0.1:5050/api/admin";
-    }
-
-    return "/api/admin";
-})();
-
-export const ADMIN_API_BASE = (window.ANVI_ADMIN_API_BASE || localStorage.getItem("anvi-admin-api-base") || localAdminApiBase).replace(/\/$/, "");
+export const ADMIN_API_BASE = (window.ANVI_ADMIN_API_BASE || localStorage.getItem("anvi-admin-api-base") || defaultAdminApiBase).replace(/\/$/, "");
 const ADMIN_TOKEN_KEY = "anvi-admin-token";
 
 export function getAdminToken() {
