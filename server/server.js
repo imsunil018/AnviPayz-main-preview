@@ -1,27 +1,16 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const connectDB = require('./config/db');
 
 const NODE_ENV = String(process.env.NODE_ENV || 'development').trim().toLowerCase();
-const DEV_ALLOWED_ORIGINS = [
-    'http://localhost:5501',
-    'http://127.0.0.1:5501',
-    'http://localhost:5050',
-    'http://127.0.0.1:5050'
+const ALLOWED_ORIGINS = [
+    'https://anvi-payz-main-preview.vercel.app',
+    'http://127.0.0.1:5501'
 ];
-const configuredFrontendOrigins = String(process.env.FRONTEND_URL || '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-const allowedOrigins = configuredFrontendOrigins.length > 0
-    ? configuredFrontendOrigins
-    : (NODE_ENV === 'production' ? [] : DEV_ALLOWED_ORIGINS);
+const allowedOrigins = [...ALLOWED_ORIGINS];
 const requiredEnv = ['MONGO_URI', 'JWT_SECRET'];
-
-if (NODE_ENV === 'production') {
-    requiredEnv.push('FRONTEND_URL');
-}
 
 const missingEnv = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
 if (missingEnv.length > 0) {
@@ -33,6 +22,11 @@ connectDB();
 
 const app = express();
 
+app.disable('x-powered-by');
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -49,6 +43,24 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+const GLOBAL_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const GLOBAL_RATE_LIMIT_MAX = 300;
+const globalRateLimitStore = new Map();
+
+app.use((req, res, next) => {
+    const key = String(req.ip || req.connection?.remoteAddress || 'global');
+    const now = Date.now();
+    const recent = (globalRateLimitStore.get(key) || []).filter((ts) => now - ts < GLOBAL_RATE_LIMIT_WINDOW_MS);
+
+    if (recent.length >= GLOBAL_RATE_LIMIT_MAX) {
+        return res.status(429).json({ success: false, message: 'Too many requests. Please slow down.' });
+    }
+
+    recent.push(now);
+    globalRateLimitStore.set(key, recent);
+    next();
+});
 
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);

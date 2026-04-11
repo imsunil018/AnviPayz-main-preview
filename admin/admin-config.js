@@ -1,12 +1,18 @@
-const fallbackApiBase = "https://anvipayz-main-preview-1.onrender.com";
-const resolvedApiBase = String(window.API_BASE || fallbackApiBase).replace(/\/+$/, "");
-const defaultAdminApiBase = `${resolvedApiBase}/api/admin`;
+const API_BASE_URL =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+        ? "http://localhost:5000"
+        : "https://anvipayz-main-preview-production.up.railway.app";
 
-export const ADMIN_API_BASE = (window.ANVI_ADMIN_API_BASE || localStorage.getItem("anvi-admin-api-base") || defaultAdminApiBase).replace(/\/$/, "");
+export const ADMIN_API_BASE = `${API_BASE_URL}/api/admin`;
 const ADMIN_TOKEN_KEY = "anvi-admin-token";
 
 export function getAdminToken() {
-    return localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+    const token = String(localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim();
+    if (!token) {
+        localStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
+    return token;
 }
 
 export function setAdminToken(token) {
@@ -51,11 +57,16 @@ export async function apiRequest(path, { method = "GET", body, auth = true } = {
         }
     }
 
-    const response = await fetch(`${ADMIN_API_BASE}${path}`, {
-        method,
-        headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined
-    });
+    let response;
+    try {
+        response = await fetch(`${ADMIN_API_BASE}${path}`, {
+            method,
+            headers,
+            body: body !== undefined ? JSON.stringify(body) : undefined
+        });
+    } catch (error) {
+        throw new Error("Unable to reach the server. Please try again.");
+    }
 
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json")

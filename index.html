@@ -388,13 +388,13 @@
                         <span>AnviPayz</span>
                     </a>
                     <div class="navbar-actions">
-                        <!-- <button class="navbar-btn navbar-btn-theme"
+                        <button class="navbar-btn navbar-btn-theme"
                             id="theme-toggle"
                             title="Toggle dark/light mode"
                             aria-label="Toggle dark/light mode"
                             onclick="toggleTheme()">
                             <i class="ri-moon-line" id="theme-icon"></i>
-                        </button> -->
+                        </button>
                         <button class="navbar-btn navbar-btn-login"
                             onclick="scrollToSection('auth'); switchView('login');">
                             <i class="ri-login-box-line"></i>
@@ -1776,7 +1776,11 @@
             <script type="module" src="js/auth.js"></script>
             <script>
                 (function () {
-                    const API_BASE_URL = (typeof API_BASE !== "undefined" ? API_BASE : "https://anvipayz-main-preview-1.onrender.com").replace(/\/+$/, "");
+                    const API_BASE_URL =
+                        window.location.hostname === "localhost" ||
+                        window.location.hostname === "127.0.0.1"
+                            ? "http://localhost:5000"
+                            : "https://anvipayz-main-preview-production.up.railway.app";
                     const API = {
                         sendOtp: '/send-otp',
                         verifyOtp: '/verify-otp',
@@ -1786,11 +1790,16 @@
                     };
 
                     async function apiRequest(path, options = {}) {
-                        const response = await fetch(`${API_BASE_URL}/api${path.startsWith("/") ? "" : "/"}${path}`, {
-                            method: options.method || 'GET',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: options.body ? JSON.stringify(options.body) : undefined
-                        });
+                        let response;
+                        try {
+                            response = await fetch(`${API_BASE_URL}/api${path.startsWith("/") ? "" : "/"}${path}`, {
+                                method: options.method || 'GET',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: options.body ? JSON.stringify(options.body) : undefined
+                            });
+                        } catch (error) {
+                            throw new Error('Unable to reach the server. Please try again.');
+                        }
                         if (!response.ok) {
                             throw new Error('API request failed');
                         }

@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
@@ -23,11 +24,11 @@ const {
 
 const envResult = require('dotenv').config({ path: path.join(__dirname, '.env') });
 const NODE_ENV = String(process.env.NODE_ENV || 'development').trim().toLowerCase();
-const DEV_ALLOWED_ORIGINS = [
-    'http://localhost:5501',
+const ALLOWED_ORIGINS = [
+    'https://anvi-payz-main-preview.vercel.app',
     'http://127.0.0.1:5501',
-    'http://localhost:5050',
-    'http://127.0.0.1:5050'
+    'http://localhost:5501',
+    'https://anvipayz-main-preview-production.up.railway.app'
 ];
 
 if (envResult.error) {
@@ -41,18 +42,8 @@ if (!isServerless && !fs.existsSync(path.join(__dirname, 'node_modules'))) {
     process.exit(1);
 }
 
-const configuredFrontendOrigins = String(process.env.FRONTEND_URL || '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-const allowedOrigins = NODE_ENV === 'production'
-    ? configuredFrontendOrigins
-    : Array.from(new Set([...DEV_ALLOWED_ORIGINS, ...configuredFrontendOrigins]));
-const DEV_ORIGIN_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+const allowedOrigins = [...ALLOWED_ORIGINS];
 const requiredEnv = ['MONGO_URI', 'JWT_SECRET', 'BREVO_API_KEY'];
-if (NODE_ENV === 'production') {
-    requiredEnv.push('FRONTEND_URL');
-}
 const missingEnv = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
 if (missingEnv.length > 0) {
     const errorMessage = `CRITICAL ERROR: Missing environment variables in .env: ${missingEnv.join(', ')}`;
@@ -69,12 +60,14 @@ console.log(`[Config] Allowed frontend origins: ${allowedOrigins.join(', ')}`);
 
 const app = express();
 
+app.disable('x-powered-by');
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
 app.use(cors({
     origin(origin, callback) {
-        const isAllowed = !origin
-            || allowedOrigins.includes(origin)
-            || (NODE_ENV !== 'production'
-                && (origin === 'null' || DEV_ORIGIN_PATTERN.test(origin)));
+        const isAllowed = !origin || allowedOrigins.includes(origin);
 
         if (isAllowed) {
             callback(null, true);
@@ -86,6 +79,24 @@ app.use(cors({
     },
     credentials: true
 }));
+
+const GLOBAL_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const GLOBAL_RATE_LIMIT_MAX = 300;
+const globalRateLimitStore = new Map();
+
+app.use((req, res, next) => {
+    const key = String(req.ip || req.connection?.remoteAddress || 'global');
+    const now = Date.now();
+    const recent = (globalRateLimitStore.get(key) || []).filter((ts) => now - ts < GLOBAL_RATE_LIMIT_WINDOW_MS);
+
+    if (recent.length >= GLOBAL_RATE_LIMIT_MAX) {
+        return res.status(429).json({ message: 'Too many requests. Please slow down.' });
+    }
+
+    recent.push(now);
+    globalRateLimitStore.set(key, recent);
+    next();
+});
 app.use(express.json());
 
 app.use((req, res, next) => {

@@ -1,7 +1,6 @@
 const APP_VERSION = "2026-03-30-production";
 
-// API Base URL - configured via config.js (or local override in localStorage)
-const storedApiBase = (localStorage.getItem("anvi-api-base") || "").trim();
+// API Base URL - fixed per environment
 const isLocalDev = window.location.protocol === "file:" ||
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1" ||
@@ -15,7 +14,7 @@ function normalizeApiBase(value) {
         .replace(/\/api$/, "");
 }
 
-const API_BASE = normalizeApiBase(window.API_BASE || storedApiBase || (isLocalDev ? "http://127.0.0.1:5050" : "https://anvipayz-main-preview-1.onrender.com"));
+const API_BASE = normalizeApiBase(isLocalDev ? "http://localhost:5000" : "https://anvipayz-main-preview-production.up.railway.app");
 const API_PREFIX = "/api";
 
 const INDIA_TIME_ZONE = "Asia/Kolkata";
@@ -35,6 +34,18 @@ const STORAGE_KEYS = {
     referralSeenCount: "anvi-referral-seen-count",
     activeUser: "anvi-active-user"
 };
+
+function normalizeTokenValue(value) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function getStoredToken() {
+    const token = normalizeTokenValue(localStorage.getItem(STORAGE_KEYS.token));
+    if (!token) {
+        localStorage.removeItem(STORAGE_KEYS.token);
+    }
+    return token;
+}
 
 const PUBLIC_PAGES = new Set(["index.html", "login.html", "forgot.html", "reset-password.html", "legal.html"]);
 const DEFAULT_ADMIN_TASKS = [];
@@ -78,13 +89,33 @@ const DELETE_ACCOUNT_FLOW_STEPS = [
 const state = {
     page: currentPage(),
     user: null, // Always fetch from API, not localStorage
-    token: localStorage.getItem(STORAGE_KEYS.token) || "",
+    token: getStoredToken(),
     notifications: normalizeNotifications(readStore(STORAGE_KEYS.notifications, [])),
     activity: normalizeActivity(readStore(STORAGE_KEYS.activity, [])),
     spinning: false,
     wheelRotation: 0,
     watchTimer: null
 };
+
+function getSafeToken() {
+    const token = normalizeTokenValue(state.token);
+    if (!token && state.token) {
+        state.token = "";
+        localStorage.removeItem(STORAGE_KEYS.token);
+    }
+    return token;
+}
+
+function storeAuthToken(value) {
+    const token = normalizeTokenValue(value);
+    if (!token) {
+        state.token = "";
+        localStorage.removeItem(STORAGE_KEYS.token);
+        return;
+    }
+    localStorage.setItem(STORAGE_KEYS.token, token);
+    state.token = token;
+}
 
 const MOBILE_NAV_META = {
     "home.html": { href: "home.html", label: "Dashboard", icon: "ri-home-5-line" },
@@ -138,6 +169,7 @@ async function initApp() {
     console.info("[AnviPayz]", APP_VERSION, state.page);
 
     enforceAutoLogout();
+    getSafeToken();
     bindActivityListeners();
     ensureUiShell();
     syncActiveNav();
@@ -572,6 +604,11 @@ function initAuthPages() {
         const otp = loginOtpInput?.value.trim();
         const email = otpState.loginEmail;
 
+        if (!email || !isValidEmail(email)) {
+            showToast("Please enter a valid email first.", "error");
+            return;
+        }
+
         if (!otp || otp.length !== 6 || !/^\d{6}$/.test(otp)) {
             showToast("Enter a valid 6-digit OTP.", "error");
             return;
@@ -592,8 +629,7 @@ function initAuthPages() {
                 }
 
                 if (data?.token) {
-                    localStorage.setItem(STORAGE_KEYS.token, data.token);
-                    state.token = data.token;
+                    storeAuthToken(data.token);
                 }
 
                 state.user = normalizeUser(data?.user || data);
@@ -627,24 +663,26 @@ function initAuthPages() {
     loginResendLink?.addEventListener("click", async (e) => {
         e.preventDefault();
         const email = otpState.loginEmail;
-        if (!email) {
-            showToast("Please enter email first.", "error");
+        if (!email || !isValidEmail(email)) {
+            showToast("Please enter a valid email first.", "error");
             return;
         }
 
-        try {
-            await requestJson("/send-otp", {
-                method: "POST",
-                body: { email },
-                auth: false
-            });
-            showToast("OTP resent to your email.", "success");
-            loginOtpInput.value = "";
-            loginOtpInput.focus();
-            startResendTimer(loginResendLink);
-        } catch (error) {
-            showToast(error.message || "Failed to resend OTP.", "error");
-        }
+        await withButtonState(loginResendLink, "Resending...", async () => {
+            try {
+                await requestJson("/send-otp", {
+                    method: "POST",
+                    body: { email },
+                    auth: false
+                });
+                showToast("OTP resent to your email.", "success");
+                loginOtpInput.value = "";
+                loginOtpInput.focus();
+                startResendTimer(loginResendLink);
+            } catch (error) {
+                showToast(error.message || "Failed to resend OTP.", "error");
+            }
+        });
     });
 
     // ============ REGISTER OTP FLOW ============
@@ -756,6 +794,11 @@ function initAuthPages() {
         const otp = registerOtpInput?.value.trim();
         const { name, email, referCode, acceptedTerms } = otpState.registerData;
 
+        if (!email || !isValidEmail(email)) {
+            showToast("Please enter a valid email first.", "error");
+            return;
+        }
+
         if (!otp || otp.length !== 6 || !/^\d{6}$/.test(otp)) {
             showToast("Enter a valid 6-digit OTP.", "error");
             return;
@@ -778,8 +821,7 @@ function initAuthPages() {
                 const data = response;
 
                 if (data?.token) {
-                    localStorage.setItem(STORAGE_KEYS.token, data.token);
-                    state.token = data.token;
+                    storeAuthToken(data.token);
                 }
 
                 state.user = normalizeUser(data?.user || data);
@@ -833,27 +875,29 @@ function initAuthPages() {
     registerResendLink?.addEventListener("click", async (e) => {
         e.preventDefault();
         const { email, name, acceptedTerms } = otpState.registerData;
-        if (!email) {
-            showToast("Please enter email first.", "error");
+        if (!email || !isValidEmail(email)) {
+            showToast("Please enter a valid email first.", "error");
             return;
         }
 
-        try {
-            await requestJson("/register-send-otp", {
-                method: "POST",
-                body: { email, name, acceptedTerms },
-                auth: false
-            });
-            showToast("OTP resent to your email.", "success");
-            registerOtpInput.value = "";
-            registerOtpInput.focus();
-            startResendTimer(registerResendLink);
-        } catch (error) {
-            if (error.code === "ACCOUNT_PENDING_DELETION") {
-                moveToLoginForRecovery(email);
+        await withButtonState(registerResendLink, "Resending...", async () => {
+            try {
+                await requestJson("/register-send-otp", {
+                    method: "POST",
+                    body: { email, name, acceptedTerms },
+                    auth: false
+                });
+                showToast("OTP resent to your email.", "success");
+                registerOtpInput.value = "";
+                registerOtpInput.focus();
+                startResendTimer(registerResendLink);
+            } catch (error) {
+                if (error.code === "ACCOUNT_PENDING_DELETION") {
+                    moveToLoginForRecovery(email);
+                }
+                showToast(error.message || "Failed to resend OTP.", "error");
             }
-            showToast(error.message || "Failed to resend OTP.", "error");
-        }
+        });
     });
 
     loginForm?.addEventListener("submit", (event) => event.preventDefault());
@@ -892,10 +936,9 @@ async function verifyEmailToken(token) {
             auth: false
         });
 
-        if (data?.token) {
-            localStorage.setItem(STORAGE_KEYS.token, data.token);
-            state.token = data.token;
-        }
+                if (data?.token) {
+                    storeAuthToken(data.token);
+                }
 
         state.user = normalizeUser(data?.user || data);
         persistUser(state.user);
@@ -1087,6 +1130,11 @@ function pickMobileNavReplacement(items) {
 }
 
 function bindNetworkIndicators() {
+    if (document.documentElement.dataset.networkIndicatorsBound === "1") {
+        return;
+    }
+    document.documentElement.dataset.networkIndicatorsBound = "1";
+
     const bar = document.querySelector(".page-loading-bar");
     const banner = document.querySelector(".network-status");
     const bannerText = banner?.querySelector(".network-status__text");
@@ -1106,8 +1154,13 @@ function bindNetworkIndicators() {
         banner.classList.toggle("active", show);
     };
 
-    const updateNetworkState = () => {
-        if (!navigator.onLine) {
+    let wasOffline = false;
+
+    const updateNetworkState = (source = "event") => {
+        const isOnline = navigator.onLine;
+
+        if (!isOnline) {
+            wasOffline = true;
             setBanner("No internet connection. Reconnecting...");
             return;
         }
@@ -1118,13 +1171,22 @@ function bindNetworkIndicators() {
             return;
         }
 
-        setBanner("Connection restored.", true);
-        window.setTimeout(() => setBanner("", false), 1200);
+        if (source === "init") {
+            setBanner("", false);
+            wasOffline = false;
+            return;
+        }
+
+        if (wasOffline) {
+            setBanner("Connection restored.", true);
+            window.setTimeout(() => setBanner("", false), 1200);
+        }
+        wasOffline = false;
     };
 
     window.addEventListener("offline", updateNetworkState);
     window.addEventListener("online", updateNetworkState);
-    updateNetworkState();
+    updateNetworkState("init");
 }
 
 function updateHomeSmartCard({ tasks = [], referral = null } = {}) {
@@ -3052,10 +3114,9 @@ async function restoreScheduledAccount() {
             auth: false
         });
 
-        if (data?.token) {
-            localStorage.setItem(STORAGE_KEYS.token, data.token);
-            state.token = data.token;
-        }
+                if (data?.token) {
+                    storeAuthToken(data.token);
+                }
 
         state.user = normalizeUser(data?.user || data);
         persistUser(state.user);
@@ -3166,7 +3227,15 @@ async function withButtonState(button, busyLabel, callback) {
     }
 
     const originalText = button.textContent;
-    button.disabled = true;
+    const supportsDisabled = "disabled" in button;
+    const originalPointerEvents = button.style.pointerEvents;
+    const originalAriaDisabled = button.getAttribute("aria-disabled");
+    if (supportsDisabled) {
+        button.disabled = true;
+    } else {
+        button.setAttribute("aria-disabled", "true");
+        button.style.pointerEvents = "none";
+    }
     button.textContent = busyLabel;
 
     try {
@@ -3175,10 +3244,24 @@ async function withButtonState(button, busyLabel, callback) {
         showToast(error.message || "Something went wrong.", "error");
     } finally {
         if (button.dataset.locked === "true") {
-            button.disabled = true;
+            if (supportsDisabled) {
+                button.disabled = true;
+            } else {
+                button.setAttribute("aria-disabled", "true");
+                button.style.pointerEvents = "none";
+            }
             button.textContent = button.dataset.lockedLabel || originalText;
         } else {
-            button.disabled = false;
+            if (supportsDisabled) {
+                button.disabled = false;
+            } else {
+                if (originalAriaDisabled === null) {
+                    button.removeAttribute("aria-disabled");
+                } else {
+                    button.setAttribute("aria-disabled", originalAriaDisabled);
+                }
+                button.style.pointerEvents = originalPointerEvents;
+            }
             button.textContent = originalText;
         }
     }
@@ -3203,14 +3286,15 @@ async function requestJson(path, { method = "GET", body, auth = true } = {}) {
         headers["Content-Type"] = "application/json";
     }
 
-    if (auth && state.token) {
-        headers.Authorization = `Bearer ${state.token}`;
+    const token = auth ? getSafeToken() : "";
+    if (auth && token) {
+        headers.Authorization = `Bearer ${token}`;
     }
 
     let response;
     const url = `${API_BASE}${API_PREFIX}${path.startsWith("/") ? "" : "/"}${path}`;
     const requestKey = method === "GET" && body === undefined
-        ? `${method}:${url}:${auth ? state.token : ""}`
+        ? `${method}:${url}:${auth ? token : ""}`
         : "";
 
     console.log(`🔗 API Call: ${method} ${url}`);
