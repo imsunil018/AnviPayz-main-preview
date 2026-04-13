@@ -1,8 +1,10 @@
 User-agent: *
 Allow: /
+
 Disallow: /home.html
 Disallow: /tasks.html
 Disallow: /wallet.html
 Disallow: /refer.html
+Disallow: /recharge.html
 
 Sitemap: https://anvipayz.com/sitemap.xml

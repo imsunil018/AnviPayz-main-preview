@@ -59,6 +59,7 @@ export async function apiRequest(path, { method = "GET", body, auth = true } = {
 
     let response;
     try {
+        console.log("API CALL:", `${ADMIN_API_BASE}${path}`);
         response = await fetch(`${ADMIN_API_BASE}${path}`, {
             method,
             headers,

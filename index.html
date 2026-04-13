@@ -7,7 +7,8 @@
             content="width=device-width, initial-scale=1.0, viewport-fit=cover">
         <meta name="color-scheme" content="dark light">
 
-        <title>AnviPayz | Free Earning App for Mobile Recharge & Daily Rewards in India</title>
+        <title>AnviPayz | Free Earning App for Mobile Recharge & Daily Rewards
+            in India</title>
 
         <link rel="icon" type="image/png" href="favicon.png">
         <link rel="canonical" href="https://anvipayz.com/">
@@ -39,7 +40,8 @@
         <meta property="og:locale" content="en_IN">
 
         <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="AnviPayz | Free Earning App in India">
+        <meta name="twitter:title"
+            content="AnviPayz | Free Earning App in India">
         <meta name="twitter:description"
             content="Complete tasks, refer friends, and earn points for mobile recharge, daily rewards, and referral bonuses.">
         <meta name="twitter:image" content="https://anvipayz.com/banner.jpg">
@@ -384,29 +386,29 @@
                             <img src="favicon.png"
                                 alt="AnviPayz Logo - Free Mobile Recharge App"
                                 class="navbar-logo-img"
-                            width="32" height="32">
-                        <span>AnviPayz</span>
-                    </a>
-                    <div class="navbar-actions">
-                        <button class="navbar-btn navbar-btn-theme"
-                            id="theme-toggle"
-                            title="Toggle dark/light mode"
-                            aria-label="Toggle dark/light mode"
-                            onclick="toggleTheme()">
-                            <i class="ri-moon-line" id="theme-icon"></i>
-                        </button>
-                        <button class="navbar-btn navbar-btn-login"
-                            onclick="scrollToSection('auth'); switchView('login');">
-                            <i class="ri-login-box-line"></i>
-                            Login
-                        </button>
-                        <button class="navbar-btn navbar-btn-register"
-                            onclick="scrollToSection('auth'); switchView('register');">
-                            <i class="ri-user-add-line"></i>
-                            Register
-                        </button>
+                                width="32" height="32">
+                            <span>AnviPayz</span>
+                        </a>
+                        <div class="navbar-actions">
+                            <button class="navbar-btn navbar-btn-theme"
+                                id="theme-toggle"
+                                title="Toggle dark/light mode"
+                                aria-label="Toggle dark/light mode"
+                                onclick="toggleTheme()">
+                                <i class="ri-moon-line" id="theme-icon"></i>
+                            </button>
+                            <button class="navbar-btn navbar-btn-login"
+                                onclick="scrollToSection('auth'); switchView('login');">
+                                <i class="ri-login-box-line"></i>
+                                Login
+                            </button>
+                            <button class="navbar-btn navbar-btn-register"
+                                onclick="scrollToSection('auth'); switchView('register');">
+                                <i class="ri-user-add-line"></i>
+                                Register
+                            </button>
+                        </div>
                     </div>
-                </div>
                 </nav>
             </header>
 
@@ -555,7 +557,8 @@
                             </div>
                         </div>
                         <button class="wallet-btn">
-                            <i class="ri-exchange-funds-line"></i> Convert Points
+                            <i class="ri-exchange-funds-line"></i> Convert
+                            Points
                             to Tokens
                         </button>
                     </div>
@@ -1792,6 +1795,7 @@
                     async function apiRequest(path, options = {}) {
                         let response;
                         try {
+                            console.log("API CALL:", `${API_BASE_URL}/api${path.startsWith("/") ? "" : "/"}${path}`);
                             response = await fetch(`${API_BASE_URL}/api${path.startsWith("/") ? "" : "/"}${path}`, {
                                 method: options.method || 'GET',
                                 headers: { 'Content-Type': 'application/json' },

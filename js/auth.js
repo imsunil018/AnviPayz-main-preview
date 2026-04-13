@@ -14,7 +14,8 @@ function normalizeApiBase(value) {
         .replace(/\/api$/, "");
 }
 
-const API_BASE = normalizeApiBase(isLocalDev ? "http://localhost:5000" : "https://anvipayz-main-preview-production.up.railway.app");
+const API_BASE_URL = normalizeApiBase(isLocalDev ? "http://localhost:5000" : "https://anvipayz-main-preview-production.up.railway.app");
+const API_BASE = API_BASE_URL;
 const API_PREFIX = "/api";
 
 const INDIA_TIME_ZONE = "Asia/Kolkata";
@@ -3292,12 +3293,13 @@ async function requestJson(path, { method = "GET", body, auth = true } = {}) {
     }
 
     let response;
-    const url = `${API_BASE}${API_PREFIX}${path.startsWith("/") ? "" : "/"}${path}`;
+    const url = `${API_BASE_URL}${API_PREFIX}${path.startsWith("/") ? "" : "/"}${path}`;
     const requestKey = method === "GET" && body === undefined
         ? `${method}:${url}:${auth ? token : ""}`
         : "";
 
     console.log(`🔗 API Call: ${method} ${url}`);
+    console.log("API CALL:", url);
 
     if (requestKey && inflightRequests.has(requestKey)) {
         return inflightRequests.get(requestKey);
