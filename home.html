@@ -13,355 +13,1466 @@
         })();
     </script>
 
+        <script>
+        // Home-only: capture referral leaderboard payload fetched by `js/auth.js` so the dashboard can
+        // render a real Top 3 preview without adding any new API calls.
+        (function () {
+            const CACHE_KEY = "anvi-home-leaderboard-cache";
+            const MAX_AGE_MS = 10 * 60 * 1000;
+
+            const shouldCaptureUrl = (url) => {
+                if (!url) return false;
+                return /\/api\/(?:user\/)?referrals(?:\?|$)/.test(String(url));
+            };
+
+            const normalize = (data) => {
+                const raw = Array.isArray(data?.leaderboard) ? data.leaderboard : [];
+                const entries = raw.map((item) => ({
+                    name: String(item?.username || item?.name || "").trim(),
+                    points: Number(item?.points ?? item?.reward ?? 0) || 0,
+                    referrals: Number(item?.referrals ?? item?.referralCount ?? 0) || 0
+                })).filter((x) => x.name && Number.isFinite(x.points));
+
+                entries.sort((a, b) => b.points - a.points);
+                return entries.slice(0, 8);
+            };
+
+            const writeCache = (entries) => {
+                try {
+                    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), entries }));
+                } catch (_) {
+                    // ignore
+                }
+            };
+
+            const safeJson = async (response) => {
+                try {
+                    return await response.json();
+                } catch (_) {
+                    return null;
+                }
+            };
+
+            if (typeof window.fetch === "function") {
+                const originalFetch = window.fetch.bind(window);
+                window.fetch = async function (input, init) {
+                    const response = await originalFetch(input, init);
+                    try {
+                        const url = typeof input === "string" ? input : input?.url;
+                        if (!shouldCaptureUrl(url)) return response;
+                        const cloned = response.clone();
+                        safeJson(cloned).then((data) => {
+                            const entries = normalize(data);
+                            if (!entries.length) return;
+                            writeCache(entries);
+                            window.__anviHomeLeaderboard = entries;
+                            window.dispatchEvent(new CustomEvent("anvi:leaderboard", { detail: { entries } }));
+                        });
+                    } catch (_) {
+                        // ignore
+                    }
+                    return response;
+                };
+            }
+
+            // Best-effort: clear stale cache (keeps storage tidy across sessions).
+            try {
+                const raw = localStorage.getItem(CACHE_KEY);
+                const parsed = raw ? JSON.parse(raw) : null;
+                if (parsed?.ts && Date.now() - parsed.ts > MAX_AGE_MS) {
+                    localStorage.removeItem(CACHE_KEY);
+                }
+            } catch (_) {
+                // ignore
+            }
+        })();
+    </script>
+
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
             rel="stylesheet">
         <link
             href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
             rel="stylesheet">
-        <link rel="stylesheet" href="css/style.css">
+        <link rel="stylesheet" href="css/style.css?v=20260507-2">
+        <link rel="icon" type="image/png" href="favicon.png">
+
         <style>
-            .page-main {
-                gap: 1rem;
-            }
+        /* Home-only premium micro widgets (streak / today / level) */
+        .home-micro-row {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.75rem;
+        }
 
-            .mobile-home-unread {
-                position: fixed;
-                top: calc(var(--safe-top) + 4.4rem);
-                left: 1rem;
-                right: 1rem;
-                background: var(--bg-card-2);
-                border: 1px solid var(--border-strong);
-                border-radius: 999px;
-                padding: 0.65rem 1rem;
-                font-weight: 700;
-                color: var(--text-main);
-                text-align: center;
-                box-shadow: var(--shadow-sm);
-                z-index: 70;
-            }
-
-            .mobile-home-unread strong {
-                color: var(--primary);
-            }
-
-            @media (min-width: 901px) {
-                .mobile-home-unread {
-                    display: none;
-                }
-            }
-
-            .balance-card.home-hero {
-                padding: 0.85rem 0.9rem;
-                border-radius: 16px;
-                box-shadow: 0 12px 22px rgba(15, 23, 42, 0.24);
-            }
-
-            .home-hero::before {
-                opacity: 0.18;
-            }
-
-            .home-hero::after {
-                opacity: 0.28;
-            }
-
-            .home-hero-top {
-                gap: 0.9rem;
-            }
-
-            .home-hero .amount {
-                font-size: clamp(1.85rem, 7vw, 2.5rem);
-                letter-spacing: -0.02em;
-            }
-
-            .home-balance-meta {
-                font-size: 0.84rem;
-                color: #ffffff;
-            }
-
-            .home-subtitle {
-                font-size: 0.78rem;
-                color: #d6e7ff;
-            }
-
-            .home-hero-chip {
-                position: relative;
-                width: min(200px, 100%);
-                padding: 0.5rem 0.6rem 0.9rem;
-                border-radius: 12px;
-                background: rgba(15, 23, 42, 0.35);
-                border: 1px solid rgba(255, 255, 255, 0.18);
-                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-                font-size: 0.82rem;
-            }
-
-            .home-hero-chip::after {
-                content: "";
-                position: absolute;
-                left: 0.6rem;
-                right: 0.6rem;
-                bottom: 0.4rem;
-                height: 6px;
-                border-radius: 999px;
-                background: rgba(148, 163, 184, 0.25);
-                overflow: hidden;
-            }
-
-            .home-hero-chip::before {
-                content: "";
-                position: absolute;
-                left: 0.6rem;
-                bottom: 0.4rem;
-                height: 6px;
-                width: 58%;
-                border-radius: 999px;
-                background: linear-gradient(90deg, #6366f1, #22c55e);
-                animation: tokenBarFill 1.4s ease-out both;
-            }
-
-            @keyframes tokenBarFill {
-                from {
-                    width: 0%;
-                }
-                to {
-                    width: 62%;
-                }
-            }
-
-            .home-hero-actions {
-                margin-top: 0.55rem;
-                gap: 0.6rem;
-            }
-
-            .home-stats {
-                display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-                gap: 0.7rem;
-                margin: 0.2rem 0 0;
-            }
-
-            .home-stats .stat-card {
-                background: #1e293b;
-                border-radius: 12px;
-                padding: 0.7rem 0.55rem;
-                min-height: auto;
-                text-align: center;
-                color: #f1f5f9;
-                border: 1px solid rgba(148, 163, 184, 0.14);
-                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
-            }
-
-            .home-stats .stat-card:active {
-                transform: scale(0.98);
-            }
-
-            .home-stats .stat-header {
-                flex-direction: column;
-                align-items: center;
-                gap: 0.45rem;
-            }
-
-            .home-stats .stat-icon-box {
-                width: 2rem;
-                height: 2rem;
-                border-radius: 10px;
-            }
-
-            .home-stats .stat-label {
-                font-size: 0.7rem;
-                color: #94a3b8;
-            }
-
-            .home-stats .stat-value {
-                margin-top: 0.4rem;
-                font-size: 1.02rem;
-                font-weight: 800;
-                color: #f1f5f9;
-            }
-
-            .home-stats .stat-meta {
-                display: none;
-            }
-
-            .home-stats .stat-card:nth-child(3) {
-                grid-column: auto;
-            }
-
-            html[data-theme="light"] .home-stats .stat-card {
-                background: #1e293b;
-                color: #f1f5f9;
-                border-color: rgba(148, 163, 184, 0.2);
-                box-shadow: 0 12px 26px rgba(15, 23, 42, 0.2);
-            }
-
-            html[data-theme="light"] .home-stats .stat-label {
-                color: #94a3b8;
-            }
-
-            html[data-theme="light"] .home-stats .stat-value {
-                color: #f1f5f9;
-            }
-
-            html[data-theme="light"] .home-stats .stat-icon-box {
-                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
-            }
-
-            .mobile-quick-actions {
-                display: none;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                gap: 0.85rem;
-                margin-bottom: 0.2rem;
-            }
-
-            .mobile-quick-item {
+        @media (max-width: 720px) {
+            .home-micro-row {
                 display: flex;
-                flex-direction: column;
+                gap: 0.7rem;
+                overflow-x: auto;
+                padding-bottom: 0.35rem;
+                scroll-snap-type: x mandatory;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            .home-micro-row::-webkit-scrollbar {
+                display: none;
+            }
+        }
+
+        .home-micro-card {
+            position: relative;
+            display: grid;
+            gap: 0.45rem;
+            min-width: 14.5rem;
+            padding: 0.8rem 0.85rem;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            background: rgba(2, 6, 23, 0.12);
+            box-shadow: 0 16px 30px rgba(0, 0, 0, 0.18);
+            scroll-snap-align: start;
+            overflow: hidden;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+        }
+
+        @media (max-width: 420px) {
+            .home-micro-card {
+                min-width: 13.25rem;
+                padding: 0.75rem 0.75rem;
+                border-radius: 16px;
+            }
+
+            .home-micro-value strong {
+                font-size: 1.25rem;
+            }
+        }
+
+        html[data-theme="light"] .home-micro-card {
+            border-color: rgba(15, 23, 42, 0.12);
+            background: rgba(255, 255, 255, 0.82);
+            box-shadow: 0 18px 32px rgba(15, 23, 42, 0.10);
+        }
+
+        .home-micro-card:hover {
+            transform: translateY(-1px);
+            border-color: rgba(124, 137, 255, 0.32);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.22);
+        }
+
+        html[data-theme="light"] .home-micro-card:hover {
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+        }
+
+        .home-micro-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+
+        .home-micro-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-muted);
+            font-weight: 900;
+            letter-spacing: 0.02em;
+            font-size: 0.86rem;
+        }
+
+        .home-micro-kicker i {
+            font-size: 1.05rem;
+        }
+
+        .home-micro-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 999px;
+            border: 1px solid rgba(124, 137, 255, 0.18);
+            background: rgba(124, 137, 255, 0.08);
+            color: var(--text-main);
+            font-weight: 900;
+            font-size: 0.78rem;
+            white-space: nowrap;
+        }
+
+        .home-micro-value {
+            display: flex;
+            align-items: baseline;
+            gap: 0.45rem;
+            color: var(--text-main);
+            font-weight: 900;
+            line-height: 1.1;
+        }
+
+        .home-micro-value strong {
+            font-size: 1.35rem;
+        }
+
+        .home-micro-value span {
+            color: var(--text-muted);
+            font-weight: 800;
+            font-size: 0.92rem;
+        }
+
+        .home-micro-sub {
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.86rem;
+            line-height: 1.25;
+        }
+
+        .home-micro-card--streak::before {
+            content: "";
+            position: absolute;
+            inset: -45% -45% auto auto;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle at center, rgba(245, 158, 11, 0.22), transparent 62%);
+            filter: blur(12px);
+            pointer-events: none;
+        }
+
+        .home-micro-card--earn::before {
+            content: "";
+            position: absolute;
+            inset: -45% auto auto -45%;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle at center, rgba(49, 196, 141, 0.18), transparent 62%);
+            filter: blur(12px);
+            pointer-events: none;
+        }
+
+        .home-micro-card--level::before {
+            content: "";
+            position: absolute;
+            inset: -45% -45% auto auto;
+            width: 250px;
+            height: 250px;
+            background: radial-gradient(circle at center, rgba(124, 137, 255, 0.20), transparent 62%);
+            filter: blur(12px);
+            pointer-events: none;
+        }
+
+        .home-micro-progress {
+            width: 100%;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(124, 137, 255, 0.10);
+            overflow: hidden;
+            border: 1px solid rgba(124, 137, 255, 0.14);
+        }
+
+        html[data-theme="light"] .home-micro-progress {
+            background: rgba(79, 70, 229, 0.08);
+            border-color: rgba(15, 23, 42, 0.10);
+        }
+
+        .home-micro-progress-fill {
+            display: block;
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            border-radius: inherit;
+            transition: width 0.35s ease;
+        }
+
+        /* Live activity / announcement bar */
+        .home-live-bar {
+            margin-top: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 0.9rem;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            background: rgba(2, 6, 23, 0.12);
+            box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
+            overflow: hidden;
+        }
+
+        html[data-theme="light"] .home-live-bar {
+            background: rgba(255, 255, 255, 0.78);
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.10);
+        }
+
+        .home-live-pulse {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: var(--accent);
+            box-shadow: 0 0 0 0 rgba(49, 196, 141, 0.55);
+            animation: homeLivePulse 2.1s ease-out infinite;
+            flex: 0 0 10px;
+        }
+
+        @keyframes homeLivePulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(49, 196, 141, 0.55);
+            }
+
+            70% {
+                box-shadow: 0 0 0 14px rgba(49, 196, 141, 0.0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(49, 196, 141, 0.0);
+            }
+        }
+
+        .home-live-text {
+            min-width: 0;
+            color: var(--text-main);
+            font-weight: 900;
+            letter-spacing: 0.01em;
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+        }
+
+        .home-live-text i {
+            color: var(--primary);
+            font-size: 1.05rem;
+            flex: 0 0 auto;
+        }
+
+        .home-live-message {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            transform: translateY(0);
+            opacity: 1;
+            transition: opacity 0.24s ease, transform 0.24s ease;
+        }
+
+        .home-live-bar.is-switching .home-live-message {
+            opacity: 0;
+            transform: translateY(6px);
+        }
+
+        /* Mini leaderboard preview (Top 3) */
+        .home-mini-lb {
+            display: grid;
+            gap: 0.55rem;
+        }
+
+        .home-mini-lb-item {
+            display: grid;
+            grid-template-columns: 54px 1fr auto;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 0.85rem;
+            border-radius: 16px;
+            border: 1px solid rgba(167, 183, 206, 0.12);
+            background: rgba(2, 6, 23, 0.12);
+            transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        html[data-theme="light"] .home-mini-lb-item {
+            border-color: rgba(15, 23, 42, 0.10);
+            background: rgba(255, 255, 255, 0.76);
+        }
+
+        .home-mini-lb-item:hover {
+            transform: translateY(-1px);
+            border-color: rgba(124, 137, 255, 0.28);
+            box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
+        }
+
+        html[data-theme="light"] .home-mini-lb-item:hover {
+            box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
+        }
+
+        .home-mini-lb-rank {
+            width: 44px;
+            height: 34px;
+            border-radius: 999px;
+            display: grid;
+            place-items: center;
+            font-weight: 900;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            background: rgba(2, 6, 23, 0.16);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        .home-mini-lb-item--top {
+            border-color: rgba(245, 158, 11, 0.32);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(124, 137, 255, 0.10));
+        }
+
+        .home-mini-lb-item--top .home-mini-lb-rank {
+            border-color: rgba(245, 158, 11, 0.55);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(49, 196, 141, 0.14));
+        }
+
+        .home-mini-lb-user {
+            min-width: 0;
+        }
+
+        .home-mini-lb-name {
+            font-weight: 900;
+            color: var(--text-main);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .home-mini-lb-sub {
+            margin-top: 0.2rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.84rem;
+        }
+
+        .home-mini-lb-points {
+            text-align: right;
+            font-weight: 900;
+            color: var(--text-main);
+            white-space: nowrap;
+        }
+
+        .home-mini-lb-empty {
+            padding: 0.9rem 0.95rem;
+            border-radius: 16px;
+            border: 1px dashed rgba(167, 183, 206, 0.18);
+            color: var(--text-muted);
+            font-weight: 700;
+            background: rgba(2, 6, 23, 0.08);
+        }
+
+        /* ==============================
+           Home v2 premium redesign (home-only)
+           - hero visual ring
+           - leaderboard rows
+           - action cards depth
+           - recent history cards
+        ============================== */
+
+        /* Hero: stronger hierarchy + XP ring */
+        @property --xp-ring-progress {
+            syntax: "<percentage>";
+            inherits: true;
+            initial-value: 0%;
+        }
+
+        body[data-page="home"] .home-hero {
+            border-color: rgba(124, 137, 255, 0.32);
+            box-shadow: 0 30px 74px rgba(2, 6, 23, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        body[data-page="home"] .home-hero-top {
+            align-items: flex-start;
+            gap: 1.1rem;
+        }
+
+        body[data-page="home"] .home-hero .amount {
+            font-family: "Space Grotesk", "Manrope", system-ui, sans-serif;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            text-shadow: 0 14px 34px rgba(2, 6, 23, 0.55);
+        }
+
+        body[data-page="home"] .home-hero-visual {
+            display: grid;
+            justify-items: end;
+            gap: 0.65rem;
+            flex: 0 0 auto;
+        }
+
+        @media (max-width: 640px) {
+            body[data-page="home"] .home-hero-visual {
+                width: 100%;
+                justify-items: stretch;
+            }
+
+            body[data-page="home"] .home-xp-ring {
+                justify-self: end;
+            }
+        }
+
+        @media (min-width: 860px) {
+            body[data-page="home"] .home-hero-visual {
+                grid-auto-flow: column;
                 align-items: center;
-                gap: 0.45rem;
-                text-align: center;
-                font-size: 0.74rem;
-                font-weight: 700;
+            }
+        }
+
+        body[data-page="home"] .home-xp-ring {
+            --xp-ring-progress: 0%;
+            width: 78px;
+            height: 78px;
+            border-radius: 999px;
+            position: relative;
+            display: grid;
+            place-items: center;
+            background:
+                conic-gradient(from -90deg,
+                    rgba(34, 197, 94, 0.95) 0%,
+                    rgba(124, 137, 255, 0.92) var(--xp-ring-progress),
+                    rgba(148, 163, 184, 0.18) var(--xp-ring-progress),
+                    rgba(148, 163, 184, 0.18) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 20px 44px rgba(2, 6, 23, 0.48);
+            transition: transform 0.2s ease;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-xp-ring {
+            border-color: rgba(15, 23, 42, 0.10);
+            box-shadow: 0 18px 34px rgba(15, 23, 42, 0.10);
+            background:
+                conic-gradient(from -90deg,
+                    rgba(16, 185, 129, 0.95) 0%,
+                    rgba(59, 130, 246, 0.92) var(--xp-ring-progress),
+                    rgba(15, 23, 42, 0.10) var(--xp-ring-progress),
+                    rgba(15, 23, 42, 0.10) 100%);
+        }
+
+        body[data-page="home"] .home-xp-ring::before {
+            content: "";
+            position: absolute;
+            inset: -20px;
+            background: radial-gradient(circle at center, rgba(124, 137, 255, 0.25), transparent 60%);
+            filter: blur(16px);
+            opacity: 0.85;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-xp-ring::before {
+            background: radial-gradient(circle at center, rgba(37, 99, 235, 0.18), transparent 60%);
+            opacity: 0.65;
+        }
+
+        body[data-page="home"] .home-xp-ring::after {
+            content: "";
+            position: absolute;
+            inset: 6px;
+            border-radius: inherit;
+            background:
+                radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.12), transparent 55%),
+                linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(6, 11, 22, 0.96));
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-xp-ring::after {
+            background:
+                radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.82) 55%, rgba(255, 255, 255, 0.72)),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 255, 0.98));
+            border-color: rgba(15, 23, 42, 0.10);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        }
+
+        body[data-page="home"] .home-xp-ring__inner {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            line-height: 1.05;
+        }
+
+        body[data-page="home"] .home-xp-ring__kicker {
+            font-size: 0.66rem;
+            font-weight: 900;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            color: rgba(243, 247, 255, 0.78);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-xp-ring__kicker {
+            color: rgba(15, 23, 42, 0.62);
+        }
+
+        body[data-page="home"] .home-xp-ring__value {
+            margin-top: 0.08rem;
+            font-family: "Space Grotesk", "Manrope", system-ui, sans-serif;
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: #f8fafc;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-xp-ring__value {
+            color: #0f172a;
+        }
+
+        body[data-page="home"] .home-xp-ring__sub {
+            margin-top: 0.08rem;
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: rgba(243, 247, 255, 0.72);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-xp-ring__sub {
+            color: rgba(15, 23, 42, 0.55);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            body[data-page="home"] .home-xp-ring {
+                transition: none;
+            }
+        }
+
+        /* Leaderboard preview: premium competitive rows (Top 3 special) */
+        body[data-page="home"] .home-mini-lb {
+            gap: 0.65rem;
+        }
+
+        body[data-page="home"] .home-mini-lb-item {
+            --lb-accent: 124, 137, 255;
+            --lb-accent2: 34, 197, 94;
+            display: grid;
+            grid-template-columns: 56px 46px 1fr auto;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 0.9rem;
+            border-radius: 18px;
+            border: 1px solid rgba(167, 183, 206, 0.12);
+            background:
+                radial-gradient(circle at 12% 18%, rgba(var(--lb-accent), 0.18), transparent 55%),
+                linear-gradient(165deg, rgba(15, 23, 42, 0.92), rgba(8, 15, 28, 0.90));
+            box-shadow: 0 18px 38px rgba(2, 6, 23, 0.42);
+            overflow: hidden;
+            position: relative;
+            text-decoration: none;
+            color: inherit;
+            transform: translateY(0);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, filter 0.18s ease;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-item {
+            border-color: rgba(15, 23, 42, 0.10);
+            background:
+                radial-gradient(circle at 12% 18%, rgba(var(--lb-accent), 0.10), transparent 58%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 255, 0.98));
+            box-shadow: 0 16px 28px rgba(15, 23, 42, 0.10);
+        }
+
+        body[data-page="home"] .home-mini-lb-item::before {
+            content: "";
+            position: absolute;
+            inset: 1px;
+            border-radius: inherit;
+            background: linear-gradient(120deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 55%, rgba(255, 255, 255, 0.10));
+            opacity: 0.22;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-item::before {
+            opacity: 0.16;
+        }
+
+        body[data-page="home"] .home-mini-lb-item::after {
+            content: "";
+            position: absolute;
+            inset: -65% -40% auto auto;
+            width: 320px;
+            height: 320px;
+            background: radial-gradient(circle, rgba(var(--lb-accent2), 0.18), transparent 62%);
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-item::after {
+            opacity: 0.35;
+        }
+
+        body[data-page="home"] .home-mini-lb-item:hover {
+            transform: translateY(-2px);
+            border-color: rgba(var(--lb-accent), 0.35);
+            box-shadow: 0 24px 54px rgba(2, 6, 23, 0.52);
+            filter: saturate(1.02);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-item:hover {
+            box-shadow: 0 20px 34px rgba(15, 23, 42, 0.12);
+        }
+
+        body[data-page="home"] .home-mini-lb-item:active {
+            transform: translateY(0);
+        }
+
+        body[data-page="home"] .home-mini-lb-item > * {
+            position: relative;
+            z-index: 1;
+        }
+
+        body[data-page="home"] .home-mini-lb-rank {
+            width: 52px;
+            height: 40px;
+            border-radius: 16px;
+            display: grid;
+            grid-template-rows: auto auto;
+            align-content: center;
+            justify-items: center;
+            gap: 0.05rem;
+            font-family: "Space Grotesk", "Manrope", system-ui, sans-serif;
+            font-weight: 800;
+            color: var(--text-main);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(2, 6, 23, 0.22);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-rank {
+            border-color: rgba(15, 23, 42, 0.10);
+            background:
+                radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.80) 55%, rgba(255, 255, 255, 0.72));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 10px 18px rgba(15, 23, 42, 0.10);
+            color: rgba(15, 23, 42, 0.86);
+        }
+
+        body[data-page="home"] .home-mini-lb-rank-num {
+            font-size: 0.82rem;
+            font-weight: 900;
+            line-height: 1;
+            opacity: 0.95;
+        }
+
+        body[data-page="home"] .home-mini-lb-rank i {
+            font-size: 1.05rem;
+            line-height: 1;
+        }
+
+        body[data-page="home"] .home-mini-lb-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 16px;
+            display: grid;
+            place-items: center;
+            font-weight: 900;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            color: rgba(248, 250, 252, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background:
+                radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.12), transparent 58%),
+                linear-gradient(135deg, rgba(var(--lb-accent), 0.22), rgba(2, 6, 23, 0.12));
+            box-shadow: 0 14px 30px rgba(2, 6, 23, 0.42);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-avatar {
+            color: rgba(15, 23, 42, 0.82);
+            border-color: rgba(15, 23, 42, 0.10);
+            background:
+                radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.75), transparent 58%),
+                linear-gradient(135deg, rgba(var(--lb-accent), 0.18), rgba(15, 23, 42, 0.04));
+            box-shadow: 0 12px 22px rgba(15, 23, 42, 0.10);
+        }
+
+        body[data-page="home"] .home-mini-lb-user {
+            display: grid;
+            gap: 0.18rem;
+            min-width: 0;
+        }
+
+        body[data-page="home"] .home-mini-lb-name {
+            font-weight: 900;
+            font-size: 1.02rem;
+            letter-spacing: 0.01em;
+        }
+
+        body[data-page="home"] .home-mini-lb-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            min-width: 0;
+        }
+
+        body[data-page="home"] .home-mini-lb-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.22rem 0.5rem;
+            border-radius: 999px;
+            font-weight: 900;
+            font-size: 0.74rem;
+            letter-spacing: 0.02em;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(2, 6, 23, 0.18);
+            white-space: nowrap;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-badge {
+            border-color: rgba(15, 23, 42, 0.10);
+            background: rgba(15, 23, 42, 0.04);
+            color: rgba(15, 23, 42, 0.74);
+        }
+
+        body[data-page="home"] .home-mini-lb-sub {
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.82rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        body[data-page="home"] .home-mini-lb-points {
+            text-align: right;
+            font-weight: 900;
+            font-family: "Space Grotesk", "Manrope", system-ui, sans-serif;
+            padding: 0.28rem 0.6rem;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(2, 6, 23, 0.12);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            white-space: nowrap;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-points {
+            border-color: rgba(15, 23, 42, 0.10);
+            background: rgba(15, 23, 42, 0.04);
+            color: rgba(15, 23, 42, 0.86);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.70);
+        }
+
+        body[data-page="home"] .home-lb-skel {
+            display: inline-block;
+            border-radius: 999px;
+            background:
+                linear-gradient(90deg,
+                    rgba(148, 163, 184, 0.16) 0%,
+                    rgba(148, 163, 184, 0.28) 45%,
+                    rgba(148, 163, 184, 0.16) 100%);
+            background-size: 220% 100%;
+            animation: homeLbShimmer 1.2s ease-in-out infinite;
+        }
+
+        body[data-page="home"] .home-lb-skel--name {
+            height: 14px;
+            width: min(15rem, 58vw);
+        }
+
+        body[data-page="home"] .home-lb-skel--pts {
+            height: 12px;
+            width: 4.8rem;
+        }
+
+        @keyframes homeLbShimmer {
+            0% {
+                background-position: 0% 0%;
+            }
+
+            100% {
+                background-position: -220% 0%;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            body[data-page="home"] .home-lb-skel {
+                animation: none;
+            }
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="1"] {
+            --lb-accent: 245, 158, 11;
+            --lb-accent2: 34, 197, 94;
+            border-color: rgba(245, 158, 11, 0.30);
+            box-shadow: 0 22px 52px rgba(245, 158, 11, 0.08), 0 18px 38px rgba(2, 6, 23, 0.42);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-item[data-rank="1"] {
+            border-color: rgba(245, 158, 11, 0.22);
+            box-shadow: 0 18px 30px rgba(245, 158, 11, 0.08), 0 16px 28px rgba(15, 23, 42, 0.10);
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="2"] {
+            --lb-accent: 148, 163, 184;
+            --lb-accent2: 124, 137, 255;
+            border-color: rgba(148, 163, 184, 0.26);
+            box-shadow: 0 22px 52px rgba(148, 163, 184, 0.07), 0 18px 38px rgba(2, 6, 23, 0.42);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-item[data-rank="2"] {
+            border-color: rgba(148, 163, 184, 0.18);
+            box-shadow: 0 18px 30px rgba(148, 163, 184, 0.08), 0 16px 28px rgba(15, 23, 42, 0.10);
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="3"] {
+            --lb-accent: 193, 122, 80;
+            --lb-accent2: 124, 137, 255;
+            border-color: rgba(193, 122, 80, 0.26);
+            box-shadow: 0 22px 52px rgba(193, 122, 80, 0.07), 0 18px 38px rgba(2, 6, 23, 0.42);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-item[data-rank="3"] {
+            border-color: rgba(193, 122, 80, 0.18);
+            box-shadow: 0 18px 30px rgba(193, 122, 80, 0.08), 0 16px 28px rgba(15, 23, 42, 0.10);
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="1"] .home-mini-lb-badge {
+            border-color: rgba(245, 158, 11, 0.40);
+            background: rgba(245, 158, 11, 0.12);
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="2"] .home-mini-lb-badge {
+            border-color: rgba(148, 163, 184, 0.40);
+            background: rgba(148, 163, 184, 0.12);
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="3"] .home-mini-lb-badge {
+            border-color: rgba(193, 122, 80, 0.44);
+            background: rgba(193, 122, 80, 0.12);
+        }
+
+        @media (max-width: 520px) {
+            body[data-page="home"] .home-mini-lb-item {
+                grid-template-columns: 52px 42px 1fr auto;
+                gap: 0.65rem;
+                padding: 0.78rem 0.8rem;
+            }
+
+            body[data-page="home"] .home-mini-lb-name {
+                font-size: 0.98rem;
+            }
+
+            body[data-page="home"] .home-mini-lb-meta {
+                flex-wrap: wrap;
+                row-gap: 0.35rem;
+            }
+
+            body[data-page="home"] .home-mini-lb-points {
+                font-size: 0.92rem;
+                padding: 0.24rem 0.52rem;
+            }
+        }
+
+        /* Mobile quick actions: app-like horizontal row (always accessible) */
+        @media (max-width: 900px) {
+            body[data-page="home"] .mobile-quick-actions {
+                display: flex;
+                gap: 0.65rem;
+                overflow-x: auto;
+                padding: 0.15rem 0.1rem 0.55rem;
+                scroll-snap-type: x mandatory;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            body[data-page="home"] .mobile-quick-actions::-webkit-scrollbar {
+                display: none;
+            }
+
+            body[data-page="home"] .mobile-quick-item {
+                min-width: 4.7rem;
+                flex: 0 0 auto;
+                padding: 0.55rem 0.55rem 0.5rem;
+                border-radius: 18px;
+                border: 1px solid rgba(167, 183, 206, 0.16);
+                background:
+                    radial-gradient(circle at 18% 16%, rgba(124, 137, 255, 0.10), transparent 60%),
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 250, 255, 0.98));
+                box-shadow: 0 14px 26px rgba(15, 23, 42, 0.10);
+                color: rgba(15, 23, 42, 0.72);
+                scroll-snap-align: start;
+                transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            }
+
+            html[data-theme="dark"] body[data-page="home"] .mobile-quick-item {
+                border-color: rgba(167, 183, 206, 0.14);
+                background:
+                    radial-gradient(circle at 18% 16%, rgba(124, 137, 255, 0.16), transparent 60%),
+                    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(8, 15, 28, 0.92));
+                box-shadow: 0 16px 30px rgba(2, 6, 23, 0.34);
                 color: var(--text-muted);
             }
 
-            .mobile-quick-icon {
-                width: 2.9rem;
-                height: 2.9rem;
-                border-radius: 18px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                background: var(--bg-card-2);
-                border: 1px solid var(--border);
+            body[data-page="home"] .mobile-quick-item:hover {
+                transform: translateY(-1px);
+                border-color: rgba(124, 137, 255, 0.28);
+                box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
+            }
+
+            html[data-theme="dark"] body[data-page="home"] .mobile-quick-item:hover {
+                box-shadow: 0 20px 38px rgba(2, 6, 23, 0.44);
+            }
+
+            body[data-page="home"] .mobile-quick-item:active {
+                transform: translateY(0);
+            }
+
+            body[data-page="home"] .mobile-quick-item span:last-child {
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.01em;
+                color: rgba(15, 23, 42, 0.78);
+            }
+
+            html[data-theme="dark"] body[data-page="home"] .mobile-quick-item span:last-child {
                 color: var(--text-main);
-                font-size: 1.2rem;
-                box-shadow: 0 12px 22px rgba(15, 23, 42, 0.18);
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
             }
 
-            .mobile-quick-item:active .mobile-quick-icon {
-                transform: scale(0.96);
-                box-shadow: 0 8px 16px rgba(15, 23, 42, 0.2);
+            body[data-page="home"] .mobile-quick-icon {
+                width: 3.05rem;
+                height: 3.05rem;
+                border-radius: 18px;
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 22px rgba(15, 23, 42, 0.12);
+                transition: transform 0.18s ease;
             }
 
-            .home-smart-card {
-                margin-top: 0.2rem;
-                border-radius: 16px;
+            html[data-theme="dark"] body[data-page="home"] .mobile-quick-icon {
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 22px rgba(2, 6, 23, 0.22);
             }
 
-            .section-title {
-                margin: 0.9rem 0 0.6rem;
+            body[data-page="home"] .mobile-quick-item:hover .mobile-quick-icon {
+                transform: translateY(-1px) rotate(-1deg);
             }
 
-            .section-title--spaced {
-                margin-top: 1.05rem;
+            body[data-page="home"] .mobile-quick-icon--more {
+                background: rgba(124, 137, 255, 0.16);
+                color: rgba(124, 137, 255, 1);
             }
 
-            .home-history-card {
-                padding: 0.8rem;
-                background: #1e293b;
-                border: 1px solid rgba(148, 163, 184, 0.14);
-                box-shadow: 0 16px 30px rgba(15, 23, 42, 0.2);
+            html[data-theme="light"] body[data-page="home"] .mobile-quick-icon--more {
+                background: rgba(37, 99, 235, 0.12);
+                color: #2563eb;
+            }
+        }
+
+        body[data-page="home"] .home-quick-card {
+            border-color: rgba(167, 183, 206, 0.14);
+            background:
+                radial-gradient(circle at 18% 20%, rgba(var(--qa-accent), 0.16), transparent 52%),
+                linear-gradient(165deg, rgba(15, 23, 42, 0.94), rgba(8, 15, 28, 0.92));
+            box-shadow: 0 20px 42px rgba(2, 6, 23, 0.44);
+        }
+
+        body[data-page="home"] .home-quick-card::after {
+            opacity: 0.24;
+        }
+
+        body[data-page="home"] .home-quick-card:hover {
+            border-color: rgba(var(--qa-accent), 0.32);
+            box-shadow: 0 26px 56px rgba(2, 6, 23, 0.52);
+        }
+
+        body[data-page="home"] .home-quick-card .feature-icon {
+            transform: translateZ(0);
+        }
+
+        body[data-page="home"] .home-quick-card:hover .feature-icon {
+            transform: translateY(-1px) rotate(-1deg);
+            transition: transform 0.18s ease;
+        }
+
+        /* Recent history: premium compact activity rows */
+        body[data-page="home"] .home-history-card {
+            padding: 0.85rem;
+        }
+
+        body[data-page="home"] .home-history-card article.history-row--compact {
+            border-radius: 16px;
+            border: 1px solid rgba(167, 183, 206, 0.12);
+            background:
+                radial-gradient(circle at 14% 20%, rgba(124, 137, 255, 0.12), transparent 52%),
+                linear-gradient(165deg, rgba(15, 23, 42, 0.92), rgba(8, 15, 28, 0.90));
+            box-shadow: 0 14px 30px rgba(2, 6, 23, 0.38);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-history-card article.history-row--compact {
+            border-color: rgba(15, 23, 42, 0.10);
+            background:
+                radial-gradient(circle at 14% 20%, rgba(59, 130, 246, 0.08), transparent 55%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 255, 0.98));
+            box-shadow: 0 12px 22px rgba(15, 23, 42, 0.10);
+        }
+
+        body[data-page="home"] .home-history-card article.history-row--compact:hover {
+            transform: translateY(-1px);
+            border-color: rgba(124, 137, 255, 0.26);
+            box-shadow: 0 18px 38px rgba(2, 6, 23, 0.46);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-history-card article.history-row--compact:hover {
+            box-shadow: 0 16px 28px rgba(15, 23, 42, 0.12);
+        }
+
+        body[data-page="home"] .home-history-card .history-icon {
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 14px 26px rgba(2, 6, 23, 0.35);
+        }
+
+        body[data-page="home"] .home-history-card .history-title .history-amount {
+            border-radius: 999px;
+            padding: 0.18rem 0.5rem;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: rgba(2, 6, 23, 0.12);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            font-family: "Space Grotesk", "Manrope", system-ui, sans-serif;
+            font-weight: 800;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-history-card .history-title .history-amount {
+            border-color: rgba(15, 23, 42, 0.10);
+            background: rgba(15, 23, 42, 0.04);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.70);
+        }
+
+        /* ==============================
+           Phase 1 polish (home-only)
+           - compress spacing
+           - improve quick cards
+           - improve mini leaderboard
+           - improve recent history rows
+        ============================== */
+        body[data-page="home"] .section-title {
+            margin-top: 0.95rem;
+            margin-bottom: 0.65rem;
+        }
+
+        body[data-page="home"] .section-title--spaced {
+            margin-top: 0.9rem;
+        }
+
+        body[data-page="home"] .home-live-bar {
+            margin-top: 0.85rem;
+        }
+
+        body[data-page="home"] .home-xp-card {
+            margin-top: 0.85rem;
+            padding: 1.25rem 1.3rem;
+            display: grid;
+            gap: 1rem;
+            border-radius: 24px;
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(24, 35, 70, 0.94));
+            border: 1px solid rgba(124, 137, 255, 0.24);
+            box-shadow: 0 22px 48px rgba(15, 23, 42, 0.22);
+        }
+
+        body[data-page="home"] .home-xp-card-body {
+            display: grid;
+            gap: 1rem;
+            align-items: center;
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        body[data-page="home"] .home-xp-card-summary {
+            min-width: 0;
+            color: #f8fafc;
+        }
+
+        body[data-page="home"] .home-xp-card-summary .home-kicker {
+            color: rgba(255, 255, 255, 0.72);
+            letter-spacing: 0.12em;
+            font-size: 0.78rem;
+        }
+
+        body[data-page="home"] .home-xp-card-value {
+            font-size: 2.5rem;
+            font-weight: 900;
+            letter-spacing: -0.04em;
+            color: #ffffff;
+            margin-top: 0.2rem;
+        }
+
+        body[data-page="home"] .home-xp-card-meta {
+            margin-top: 0.35rem;
+            color: rgba(255, 255, 255, 0.82);
+            font-weight: 700;
+            font-size: 0.98rem;
+        }
+
+        body[data-page="home"] .home-xp-card-ring-wrapper {
+            display: grid;
+            place-items: center;
+            width: 11rem;
+            min-width: 11rem;
+        }
+
+        body[data-page="home"] .home-xp-card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 0.95rem;
+            margin-top: 0.3rem;
+        }
+
+        body[data-page="home"] .home-xp-footer-text {
+            color: rgba(255, 255, 255, 0.85);
+            font-weight: 700;
+        }
+
+        body[data-page="home"] .home-xp-badge {
+            padding: 0.35rem 0.85rem;
+            border-radius: 999px;
+            border: 1px solid rgba(124, 137, 255, 0.25);
+            background: rgba(124, 137, 255, 0.16);
+            color: #f8fafc;
+            font-weight: 900;
+            font-size: 0.82rem;
+            letter-spacing: 0.02em;
+        }
+
+        body[data-page="home"] .home-smart-card {
+            margin-top: 0.85rem;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 0.9rem;
+            align-items: center;
+            padding: 1rem 1.1rem;
+            min-height: auto;
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+        }
+
+        body[data-page="home"] .home-smart-card .home-smart-copy {
+            display: grid;
+            gap: 0.45rem;
+            color: #f8fafc;
+        }
+
+        body[data-page="home"] .home-smart-card .home-smart-title {
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: 900;
+        }
+
+        body[data-page="home"] .home-smart-card .home-smart-sub {
+            color: rgba(255, 255, 255, 0.82);
+            font-weight: 700;
+        }
+
+        body[data-page="home"] .home-smart-card .home-smart-goal {
+            color: rgba(255, 255, 255, 0.72);
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        body[data-page="home"] .home-smart-meter {
+            position: relative;
+            height: 0.48rem;
+            width: 100%;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            overflow: hidden;
+        }
+
+        body[data-page="home"] .home-smart-meter-fill {
+            display: block;
+            height: 100%;
+            width: 0%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, rgba(79, 70, 229, 0.95), rgba(16, 185, 129, 0.95));
+            transition: width 0.35s ease;
+            box-shadow: 0 0 18px rgba(79, 70, 229, 0.22);
+        }
+
+        body[data-page="home"] .home-smart-meter-label {
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-smart-card {
+            background: #eff6ff;
+            border-color: rgba(59, 130, 246, 0.18);
+            box-shadow: 0 18px 32px rgba(15, 23, 42, 0.06);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-smart-card .home-smart-copy {
+            color: #0f172a;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-smart-card .home-smart-title {
+            color: #111827;
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-smart-card .home-smart-sub,
+        html[data-theme="light"] body[data-page="home"] .home-smart-card .home-smart-goal,
+        html[data-theme="light"] body[data-page="home"] .home-smart-meter-label {
+            color: rgba(15, 23, 42, 0.75);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-smart-meter {
+            background: rgba(15, 23, 42, 0.05);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-smart-meter-fill {
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.95), rgba(16, 185, 129, 0.95));
+            box-shadow: none;
+        }
+
+        body[data-page="home"] .home-quick-grid {
+            margin-top: 0.2rem;
+            margin-bottom: 0.35rem;
+            gap: 0.85rem;
+        }
+
+        @media (max-width: 720px) {
+            body[data-page="home"] .home-xp-card-body {
+                grid-template-columns: 1fr;
             }
 
-            .home-history-card .history-row {
-                padding: 0.7rem 0.75rem;
-                border-radius: 12px;
-                border: 1px solid rgba(148, 163, 184, 0.12);
-                background: rgba(15, 23, 42, 0.45);
+            body[data-page="home"] .home-xp-card-footer {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.4rem;
             }
+        }
 
-            .home-history-card .history-row + .history-row {
-                margin-top: 0.6rem;
-            }
+        body[data-page="home"] .home-stats {
+            margin-top: 0.85rem;
+        }
 
-            .home-history-card .history-title {
-                font-size: 0.92rem;
-                font-weight: 700;
-            }
+        /* Quick action cards: more clickable + premium hierarchy */
+        body[data-page="home"] .home-quick-card {
+            min-height: 10.75rem;
+            gap: 0.85rem;
+            position: relative;
+            overflow: hidden;
+            transform: translateY(0);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+        }
 
-            .home-history-card .history-body {
-                font-size: 0.8rem;
-                color: #94a3b8;
-            }
+        body[data-page="home"] .home-quick-card::after {
+            content: "";
+            position: absolute;
+            inset: 1px;
+            border-radius: inherit;
+            background: linear-gradient(120deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.0) 45%, rgba(255, 255, 255, 0.08));
+            opacity: 0.18;
+            pointer-events: none;
+        }
 
-            .home-history-card .history-time {
-                font-size: 0.74rem;
-                color: #94a3b8;
-            }
+        body[data-page="home"] .home-quick-card > * {
+            position: relative;
+            z-index: 1;
+        }
 
-            .home-hero,
-            .home-smart-card,
-            .home-quick-card,
-            .stat-card {
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
-            }
+        body[data-page="home"] .home-quick-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(124, 137, 255, 0.32);
+            box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+        }
 
-            .home-hero:active,
-            .home-smart-card:active,
-            .home-quick-card:active,
-            .stat-card:active {
-                transform: scale(0.99);
-            }
+        body[data-page="home"] .home-quick-card:active {
+            transform: translateY(0);
+        }
 
-            @media (max-width: 820px) {
-                .home-hero-actions {
-                    display: none;
-                }
+        body[data-page="home"] .home-quick-card:focus-visible {
+            outline: 2px solid rgba(124, 137, 255, 0.55);
+            outline-offset: 2px;
+        }
 
-                .home-hero-top {
-                    gap: 0.85rem;
-                }
+        body[data-page="home"] .home-quick-card .feature-head {
+            gap: 1.05rem;
+            margin-bottom: 0.75rem;
+        }
 
-                .home-hero .amount {
-                    margin: 0.25rem 0 0.55rem;
-                }
+        body[data-page="home"] .home-quick-card .feature-icon {
+            width: 3.35rem;
+            height: 3.35rem;
+            border-radius: 18px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 12px 22px rgba(0, 0, 0, 0.18);
+        }
 
-                .home-hero-chip {
-                    width: 100%;
-                }
+        body[data-page="home"] .home-quick-card .feature-icon i {
+            font-size: 1.45rem;
+        }
 
-                .mobile-quick-actions {
-                    display: grid;
-                }
+        body[data-page="home"] .home-quick-card .feature-copy h3 {
+            font-size: 1.1rem;
+            font-weight: 900;
+            letter-spacing: 0.01em;
+        }
 
-                .home-quick-grid {
-                    display: none;
-                }
+        body[data-page="home"] .home-quick-card .feature-copy p {
+            font-size: 0.9rem;
+        }
 
-                .home-stats {
-                    display: grid;
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
-                    gap: 0.6rem;
-                }
-            }
+        body[data-page="home"] .home-quick-cta {
+            align-self: flex-start;
+            padding: 0.35rem 0.55rem;
+            border-radius: 999px;
+            border: 1px solid rgba(124, 137, 255, 0.20);
+            background: rgba(124, 137, 255, 0.10);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
 
-            @media (max-width: 520px) {
-                .home-stats {
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
-                    gap: 0.55rem;
-                }
+        body[data-page="home"] .home-quick-card:hover .home-quick-cta i {
+            transform: translateX(2px);
+            transition: transform 0.18s ease;
+        }
 
-                .home-stats .stat-card {
-                    padding: 0.65rem 0.45rem;
-                }
+        /* Mini leaderboard: rank badges feel special */
+        body[data-page="home"] .home-mini-lb-item {
+            text-decoration: none;
+            color: inherit;
+        }
 
-                .home-stats .stat-label {
-                    font-size: 0.68rem;
-                }
+        body[data-page="home"] .home-mini-lb-item:focus-visible {
+            outline: 2px solid rgba(124, 137, 255, 0.55);
+            outline-offset: 2px;
+        }
 
-                .home-stats .stat-value {
-                    font-size: 0.98rem;
-                }
-            }
+        body[data-page="home"] .home-mini-lb-item[data-rank="1"] .home-mini-lb-rank {
+            border-color: rgba(245, 158, 11, 0.55);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.24), rgba(49, 196, 141, 0.12));
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="2"] .home-mini-lb-rank {
+            border-color: rgba(148, 163, 184, 0.48);
+            background: linear-gradient(135deg, rgba(148, 163, 184, 0.22), rgba(124, 137, 255, 0.12));
+        }
+
+        body[data-page="home"] .home-mini-lb-item[data-rank="3"] .home-mini-lb-rank {
+            border-color: rgba(245, 158, 11, 0.32);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(124, 137, 255, 0.10));
+        }
+
+        body[data-page="home"] .home-mini-lb-points {
+            padding: 0.22rem 0.55rem;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: rgba(2, 6, 23, 0.10);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-mini-lb-points {
+            border-color: rgba(15, 23, 42, 0.10);
+            background: rgba(79, 70, 229, 0.06);
+        }
+
+        /* Recent history: alternating rows + tighter rhythm */
+        body[data-page="home"] .home-history-card {
+            padding: 0.75rem;
+        }
+
+        body[data-page="home"] .home-history-card .history-row--compact + .history-row--compact {
+            margin-top: 0.4rem;
+        }
+
+        body[data-page="home"] .home-history-card article.history-row--compact:nth-of-type(odd) {
+            background: rgba(2, 6, 23, 0.16);
+        }
+
+        html[data-theme="light"] body[data-page="home"] .home-history-card article.history-row--compact:nth-of-type(odd) {
+            background: rgba(248, 250, 255, 0.96);
+        }
+
+        body[data-page="home"] .home-history-card .history-row--compact .history-time {
+            font-size: 0.72rem;
+            opacity: 0.9;
+        }
         </style>
-
-        <link rel="icon" type="image/png" href="favicon.png">
 
     </head>
 
-    <body>
+    <body data-page="home">
 
         <div class="app-container">
             <div class="overlay"></div>
@@ -396,7 +1507,8 @@
 
             <main class="main-content page-main">
                 <div class="mobile-header compact-mobile-header">
-                    <button class="icon-btn" id="menu-btn"><i
+                    <button class="icon-btn" id="menu-btn"
+                        aria-label="Open menu"><i
                             class="ri-menu-line"></i></button>
                     <div class="brand app-shell-title">Dashboard</div>
                     <div class="mobile-header-actions">
@@ -406,17 +1518,19 @@
                             <span id="mobile-token-count">0.00</span>
                         </div>
 
-                        <button class="icon-btn mobile-theme-toggle"><i
+                        <button class="icon-btn mobile-theme-toggle"
+                            aria-label="Toggle theme"><i
                                 class="ri-moon-line"></i></button>
 
                         <a href="profile.html" class="icon-btn"
-                            title="Profile"><i class="ri-user-line"></i></a>
+                            title="Profile" aria-label="Profile"><i
+                                class="ri-user-line"></i></a>
                     </div>
 
                 </div>
 
                 <div id="mobile-home-unread-banner" class="mobile-home-unread"
-                    hidden>
+                    role="status" hidden>
                     You have <strong id="mobile-home-unread-count">0</strong>
                     unread notifications.
                 </div>
@@ -435,31 +1549,42 @@
                             <span id="header-token-count">0.00</span> Tokens
                         </div>
 
-                        <button class="icon-btn" id="theme-toggle"><i
+                        <button class="icon-btn" id="theme-toggle"
+                            aria-label="Toggle theme"><i
                                 class="ri-moon-line"></i></button>
 
                         <a href="profile.html" class="icon-btn"
-                            title="Profile"><i class="ri-user-line"></i></a>
+                            title="Profile" aria-label="Profile"><i
+                                class="ri-user-line"></i></a>
 
                     </div>
                 </header>
                 <section class="card balance-card home-hero">
                     <div class="home-hero-top">
                         <div class="home-hero-copy">
-                            <div class="home-kicker">Total Points</div>
+                            <div class="home-kicker">Points Balance</div>
                             <div class="amount" id="user-balance">0</div>
                             <div class="home-balance-meta">
-                                &asymp; <span
+                                Spendable balance • &asymp; <span
                                     id="home-hero-token-inline">0.00</span>
                                 Tokens
                             </div>
                             <div class="home-subtitle">Turn your points into
                                 tokens, recharges, and rewards.</div>
                         </div>
-                        <div class="home-hero-chip">
-                            <i class="ri-coin-fill"></i>
-                            <span id="home-hero-token-count">0.00</span>
-                            Tokens
+                        <div class="home-hero-visual"
+                            aria-label="Token balance">
+                            <div class="home-hero-chip" id="home-hero-chip"
+                                aria-label="Token balance">
+                                <span class="home-hero-chip__icon"
+                                    aria-hidden="true">
+                                    <i class="ri-coin-fill"></i>
+                                </span>
+                                <span class="home-hero-chip__value"
+                                    id="home-hero-token-count">0.00</span>
+                                <span
+                                    class="home-hero-chip__label">Tokens</span>
+                            </div>
                         </div>
                     </div>
                     <div class="home-hero-actions">
@@ -468,16 +1593,118 @@
                             <i class="ri-exchange-funds-line"></i> Convert to
                             Tokens
                         </a>
-                        <a href="wallet.html"
-                            class="btn-primary btn-primary--ghost btn-inline">
-                            <i class="ri-wallet-line"></i> Open Wallet
-                        </a>
-                        <a href="tasks.html"
-                            class="btn-primary btn-primary--ghost btn-inline">
-                            <i class="ri-task-line"></i> View Tasks
-                        </a>
                     </div>
                 </section>
+
+                <section class="card home-xp-card"
+                    aria-label="Lifetime XP progress">
+                    <div class="home-xp-card-body">
+                        <div class="home-xp-card-summary">
+                            <div class="home-kicker">Lifetime XP</div>
+                            <div class="home-xp-card-value">
+                                <strong id="home-lifetime-xp">0</strong> XP
+                            </div>
+                            <div class="home-xp-card-meta">
+                                Level <span id="home-lifetime-level">1</span> •
+                                Permanent progression
+                            </div>
+                        </div>
+                        <div class="home-xp-card-ring-wrapper">
+                            <div class="home-xp-ring" id="home-xp-ring"
+                                aria-label="Level progress">
+                                <div class="home-xp-ring__inner">
+                                    <div
+                                        class="home-xp-ring__kicker">Level</div>
+                                    <div class="home-xp-ring__value"
+                                        id="home-xp-ring-level">1</div>
+                                    <div class="home-xp-ring__sub"
+                                        id="home-xp-ring-sub">0%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="home-xp-card-footer">
+                        <div class="home-xp-footer-text"
+                            id="home-next-level-target">0 XP to Level 2</div>
+                        <div class="home-xp-badge">Earn XP permanently</div>
+                    </div>
+                </section>
+
+                <!-- Premium compact dashboard widgets (mobile-first) -->
+                <div class="home-micro-row" aria-label="Daily progress widgets">
+                    <div class="home-micro-card home-micro-card--streak">
+                        <div class="home-micro-top">
+                            <div class="home-micro-kicker">
+                                <i class="ri-fire-fill" aria-hidden="true"></i>
+                                Daily Streak
+                            </div>
+                            <div class="home-micro-badge" title="Streak bonus">
+                                +<span id="home-streak-bonus">50</span>
+                            </div>
+                        </div>
+                        <div class="home-micro-value">
+                            <strong id="home-streak-count">0</strong>
+                            <span>Day Streak</span>
+                        </div>
+                        <div class="home-micro-sub"
+                            id="home-streak-subtext">Claim tomorrow for +50
+                            bonus</div>
+                    </div>
+
+                    <div class="home-micro-card home-micro-card--earn">
+                        <div class="home-micro-top">
+                            <div class="home-micro-kicker">
+                                <i class="ri-line-chart-line"
+                                    aria-hidden="true"></i>
+                                Today’s Earnings
+                            </div>
+                            <div class="home-micro-badge" title="Trend">
+                                <i class="ri-arrow-up-line"
+                                    aria-hidden="true"></i>
+                                <span id="home-today-trend">+0%</span>
+                            </div>
+                        </div>
+                        <div class="home-micro-value">
+                            <strong id="home-today-earned">+0</strong>
+                            <span>pts today</span>
+                        </div>
+                        <div class="home-micro-sub">Small wins daily → big
+                            rewards weekly.</div>
+                    </div>
+
+                    <div class="home-micro-card home-micro-card--level">
+                        <div class="home-micro-top">
+                            <div class="home-micro-kicker">
+                                <i class="ri-medal-2-fill"
+                                    aria-hidden="true"></i>
+                                Lifetime Level
+                            </div>
+                            <div class="home-micro-badge" title="Current level">
+                                Lv <span id="home-level-number">1</span>
+                            </div>
+                        </div>
+                        <div class="home-micro-sub" id="home-level-subtext">0 XP
+                            left to Level 2</div>
+                        <div class="home-micro-progress"
+                            aria-label="Level progress">
+                            <span id="home-level-progress-fill"
+                                class="home-micro-progress-fill"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live activity / announcement bar (rotating) -->
+                <div id="home-live-bar" class="home-live-bar" role="status"
+                    aria-live="polite">
+                    <span class="home-live-pulse" aria-hidden="true"></span>
+                    <div class="home-live-text">
+                        <i class="ri-notification-3-line"
+                            aria-hidden="true"></i>
+                        <span id="home-live-message"
+                            class="home-live-message">🔥 Weekend Bonus
+                            Active</span>
+                    </div>
+                </div>
 
                 <a href="tasks.html" class="home-smart-card"
                     id="home-smart-card">
@@ -485,48 +1712,85 @@
                         <i class="ri-flashlight-line"></i>
                     </div>
                     <div class="home-smart-copy">
-                        <div class="home-smart-title" id="home-smart-title">New
-                            tasks are live</div>
-                        <div class="home-smart-sub" id="home-smart-sub">Tap to
-                            start earning points.</div>
+                        <div class="home-smart-title"
+                            id="home-smart-title">Daily Goal</div>
+                        <div class="home-smart-sub" id="home-smart-sub">Complete
+                            activities and earn bonus XP.</div>
+                        <div class="home-smart-goal" id="home-smart-goal">Stay
+                            on track for extra rewards.</div>
+                        <div class="home-smart-meter" aria-hidden="true">
+                            <span class="home-smart-meter-fill"
+                                id="home-smart-progress-fill"
+                                style="width:0%"></span>
+                        </div>
+                        <div class="home-smart-meter-label"
+                            id="home-smart-progress-label">0 / 0 tasks
+                            completed</div>
                     </div>
                     <i class="ri-arrow-right-s-line home-smart-arrow"></i>
                 </a>
 
-                <div class="section-title">Quick Actions</div>
-                <div class="mobile-quick-actions">
+                <div class="section-title">
+                    <div>Quick Actions</div>
+                    <a
+                        class="btn-primary--ghost btn-inline section-title-action section-title-cta"
+                        href="shortcuts.html"
+                        aria-label="Customize quick actions"
+                        title="Customize quick actions">
+                        <i class="ri-settings-3-line"></i>
+                        <span>Customize</span>
+                    </a>
+                </div>
+                <div class="mobile-quick-actions" id="home-quick-actions">
                     <a class="mobile-quick-item"
-                        href="wallet.html#convert-section">
-                        <span class="mobile-quick-icon"
-                            style="background: rgba(79, 70, 229, 0.16); color: var(--primary);">
+                        href="wallet.html#convert-section"
+                        data-action-id="convert">
+                        <span
+                            class="mobile-quick-icon mobile-quick-icon--convert">
                             <i class="ri-exchange-funds-line"></i>
                         </span>
                         <span>Convert</span>
                     </a>
-
-                    <a class="mobile-quick-item" href="refer.html">
-                        <span class="mobile-quick-icon"
-                            style="background: rgba(245, 158, 11, 0.18); color: #f59e0b;">
+                    <a class="mobile-quick-item" href="wallet.html"
+                        data-action-id="wallet">
+                        <span
+                            class="mobile-quick-icon mobile-quick-icon--convert">
+                            <i class="ri-wallet-line"></i>
+                        </span>
+                        <span>Wallet</span>
+                    </a>
+                    <a class="mobile-quick-item" href="refer.html"
+                        data-action-id="refer">
+                        <span
+                            class="mobile-quick-icon mobile-quick-icon--refer">
                             <i class="ri-share-forward-line"></i>
                         </span>
                         <span>Refer</span>
                     </a>
-
-                    <a class="mobile-quick-item" href="support.html">
-                        <span class="mobile-quick-icon"
-                            style="background: rgba(59, 130, 246, 0.16); color: #60a5fa;">
+                    <a class="mobile-quick-item" href="support.html"
+                        data-action-id="support">
+                        <span
+                            class="mobile-quick-icon mobile-quick-icon--support">
                             <i class="ri-customer-service-2-line"></i>
                         </span>
                         <span>Support</span>
                     </a>
-                    <a class="mobile-quick-item" href="notifications.html">
-                        <span class="mobile-quick-icon"
-                            style="background: rgba(16, 185, 129, 0.16); color: #10b981;">
+                    <a class="mobile-quick-item" href="refer.html#leaderboard"
+                        data-action-id="leaderboard">
+                        <span
+                            class="mobile-quick-icon mobile-quick-icon--leaderboard">
+                            <i class="ri-trophy-line"></i>
+                        </span>
+                        <span>Leaderboard</span>
+                    </a>
+                    <a class="mobile-quick-item" href="notifications.html"
+                        data-action-id="showall">
+                        <span
+                            class="mobile-quick-icon mobile-quick-icon--alerts">
                             <i class="ri-notification-3-line"></i>
                         </span>
-                        <span>Alerts</span>
+                        <span>Notifications</span>
                     </a>
-
                 </div>
 
                 <div class="page-grid page-grid--three home-quick-grid">
@@ -611,6 +1875,89 @@
                         <div class="stat-meta">Survey bonuses credited</div>
                     </div>
                 </section>
+
+                <div class="section-title section-title--spaced">Top Users
+                    <span>Preview</span></div>
+                <div class="card" style="margin-top: 1rem;">
+                    <div id="home-mini-leaderboard" class="home-mini-lb"
+                        aria-label="Top users preview">
+                        <a class="home-mini-lb-item home-mini-lb-item--top"
+                            data-rank="1" href="refer.html#leaderboard"
+                            aria-label="View full leaderboard">
+                            <div class="home-mini-lb-rank"
+                                aria-hidden="true"><span
+                                    class="home-mini-lb-rank-num">#1</span><i
+                                    class="ri-vip-crown-2-fill"></i></div>
+                            <div class="home-mini-lb-avatar"
+                                aria-hidden="true">—</div>
+                            <div class="home-mini-lb-user">
+                                <div class="home-mini-lb-name"><span
+                                        class="home-lb-skel home-lb-skel--name"
+                                        aria-hidden="true"></span></div>
+                                <div class="home-mini-lb-meta">
+                                    <span
+                                        class="home-mini-lb-badge home-mini-lb-badge--gold"
+                                        aria-hidden="true">Gold</span>
+                                    <span
+                                        class="home-mini-lb-sub">Loading…</span>
+                                </div>
+                            </div>
+                            <div class="home-mini-lb-points"><span
+                                    class="home-lb-skel home-lb-skel--pts"
+                                    aria-hidden="true"></span></div>
+                        </a>
+                        <a class="home-mini-lb-item" data-rank="2"
+                            href="refer.html#leaderboard"
+                            aria-label="View full leaderboard">
+                            <div class="home-mini-lb-rank"
+                                aria-hidden="true"><span
+                                    class="home-mini-lb-rank-num">#2</span><i
+                                    class="ri-medal-2-fill"></i></div>
+                            <div class="home-mini-lb-avatar"
+                                aria-hidden="true">—</div>
+                            <div class="home-mini-lb-user">
+                                <div class="home-mini-lb-name"><span
+                                        class="home-lb-skel home-lb-skel--name"
+                                        aria-hidden="true"></span></div>
+                                <div class="home-mini-lb-meta">
+                                    <span
+                                        class="home-mini-lb-badge home-mini-lb-badge--silver"
+                                        aria-hidden="true">Silver</span>
+                                    <span
+                                        class="home-mini-lb-sub">Loading…</span>
+                                </div>
+                            </div>
+                            <div class="home-mini-lb-points"><span
+                                    class="home-lb-skel home-lb-skel--pts"
+                                    aria-hidden="true"></span></div>
+                        </a>
+                        <a class="home-mini-lb-item" data-rank="3"
+                            href="refer.html#leaderboard"
+                            aria-label="View full leaderboard">
+                            <div class="home-mini-lb-rank"
+                                aria-hidden="true"><span
+                                    class="home-mini-lb-rank-num">#3</span><i
+                                    class="ri-medal-fill"></i></div>
+                            <div class="home-mini-lb-avatar"
+                                aria-hidden="true">—</div>
+                            <div class="home-mini-lb-user">
+                                <div class="home-mini-lb-name"><span
+                                        class="home-lb-skel home-lb-skel--name"
+                                        aria-hidden="true"></span></div>
+                                <div class="home-mini-lb-meta">
+                                    <span
+                                        class="home-mini-lb-badge home-mini-lb-badge--bronze"
+                                        aria-hidden="true">Bronze</span>
+                                    <span
+                                        class="home-mini-lb-sub">Loading…</span>
+                                </div>
+                            </div>
+                            <div class="home-mini-lb-points"><span
+                                    class="home-lb-skel home-lb-skel--pts"
+                                    aria-hidden="true"></span></div>
+                        </a>
+                    </div>
+                </div>
                 <div class="section-title section-title--spaced">Recent History
                     <span>Latest</span></div>
 
@@ -622,13 +1969,13 @@
                 </div>
 
                 <footer class="app-footer">
-                    <a href="privacy.html" target="_blank">Privacy Policy</a>
+                    <a href="privacy.html">Privacy Policy</a>
                     <span>&bull;</span>
-                    <a href="terms.html" target="_blank">Terms & Conditions</a>
+                    <a href="terms.html">Terms & Conditions</a>
                     <span>&bull;</span>
-                    <a href="refund.html" target="_blank">Refund Policy</a>
+                    <a href="refund.html">Refund Policy</a>
                     <span>&bull;</span>
-                    <a href="disclaimer.html" target="_blank">Disclaimer</a>
+                    <a href="disclaimer.html">Disclaimer</a>
                 </footer>
 
             </main>
@@ -652,7 +1999,326 @@
 
         <script src="config.js"></script>
 
-        <script type="module" src="js/auth.js"></script>
+        <script defer src="js/auth.js?v=20260511-1"></script>
+        <script>
+        // UI-only enhancements: streak / today earnings / level + announcements + mini leaderboard preview.
+        // Keeps existing API/auth logic untouched.
+        (function () {
+            const INDIA_TZ = "Asia/Kolkata";
+            const STORAGE_ACTIVITY_KEY = "anvi-local-activity";
+
+            const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+            const safeInt = (value, fallback = 0) => {
+                const n = Number.parseInt(String(value).replace(/,/g, ""), 10);
+                return Number.isFinite(n) ? n : fallback;
+            };
+
+            const safeNumber = (value, fallback = 0) => {
+                const n = Number(String(value).replace(/,/g, ""));
+                return Number.isFinite(n) ? n : fallback;
+            };
+
+            const formatPts = (n) => {
+                const abs = Math.abs(n);
+                if (abs >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+                if (abs >= 1000) return `${(n / 1000).toFixed(1)}K`;
+                return String(Math.round(n));
+            };
+
+            const setText = (id, value) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = value;
+            };
+
+            const dateKeyFor = (date) => {
+                try {
+                    const fmt = new Intl.DateTimeFormat("en-CA", {
+                        timeZone: INDIA_TZ,
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit"
+                    });
+                    // en-CA yields YYYY-MM-DD
+                    return fmt.format(date);
+                } catch (_) {
+                    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+                }
+            };
+
+            const shiftDateKey = (key, deltaDays) => {
+                const d = new Date(`${key}T00:00:00`);
+                d.setDate(d.getDate() + deltaDays);
+                return dateKeyFor(d);
+            };
+
+            const readActivity = () => {
+                try {
+                    const raw = localStorage.getItem(STORAGE_ACTIVITY_KEY);
+                    const parsed = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (_) {
+                    return [];
+                }
+            };
+
+            const sumPointsForDay = (records, dayKey) => {
+                let sum = 0;
+                for (const item of records) {
+                    const time = item?.time || item?.date || item?.createdAt;
+                    if (!time) continue;
+                    const key = dateKeyFor(new Date(time));
+                    if (key !== dayKey) continue;
+                    const dir = String(item?.direction || "").toLowerCase();
+                    const amount = safeNumber(item?.amount ?? item?.points ?? item?.value, 0);
+                    const isCredit = dir ? dir === "credit" : amount >= 0;
+                    if (!isCredit) continue;
+                    sum += Math.max(0, amount);
+                }
+                return Math.round(sum);
+            };
+
+            const computeStreak = (records) => {
+                const activeDays = new Set();
+                for (const item of records) {
+                    const time = item?.time || item?.date || item?.createdAt;
+                    if (!time) continue;
+                    const amount = safeNumber(item?.amount ?? item?.points ?? item?.value, 0);
+                    if (amount <= 0) continue;
+                    const dir = String(item?.direction || "").toLowerCase();
+                    if (dir && dir !== "credit") continue;
+                    activeDays.add(dateKeyFor(new Date(time)));
+                }
+
+                let count = 0;
+                let cursor = dateKeyFor(new Date());
+                while (activeDays.has(cursor)) {
+                    count += 1;
+                    cursor = shiftDateKey(cursor, -1);
+                    if (count > 365) break;
+                }
+                return count;
+            };
+
+            const updateStreakUI = (records) => {
+                const streak = computeStreak(records);
+                const bonus = 50;
+                setText("home-streak-count", String(streak));
+                setText("home-streak-bonus", String(bonus));
+                setText("home-streak-subtext", `Claim tomorrow for +${bonus} bonus`);
+            };
+
+            const updateTodayUI = (records) => {
+                const todayKey = dateKeyFor(new Date());
+                const yesterdayKey = shiftDateKey(todayKey, -1);
+                const todayPts = sumPointsForDay(records, todayKey);
+                const yPts = sumPointsForDay(records, yesterdayKey);
+
+                const trendPct = yPts > 0 ? Math.round(((todayPts - yPts) / yPts) * 100) : 0;
+                const trendLabel = yPts > 0 ? `${trendPct >= 0 ? "+" : ""}${trendPct}%` : "+0%";
+
+                setText("home-today-earned", `+${formatPts(todayPts)}`);
+                setText("home-today-trend", trendLabel);
+            };
+
+            const getLifetimeXp = () => {
+                return Number(window.__anviLifetimeXp ?? 0);
+            };
+
+            const updateLevelUI = (detail = {}) => {
+                const xp = Number(detail.xp ?? window.__anviLifetimeXp ?? getLifetimeXp() ?? 0);
+                const fallbackLevel = Number(document.getElementById("home-lifetime-level")?.textContent);
+                const level = Number(detail.level ?? (Number.isFinite(fallbackLevel) ? fallbackLevel : 1));
+                const currentThreshold = Number(detail.currentThreshold ?? 0);
+                const nextThreshold = Number(detail.nextThreshold ?? (currentThreshold + 1000));
+                const progress = Number(detail.progress ?? 0);
+
+                setText("home-lifetime-xp", formatPts(xp));
+                setText("home-lifetime-level", String(level));
+                setText("home-next-level-target", `${formatPts(Math.max(0, nextThreshold - xp))} XP to Level ${level + 1}`);
+                setText("home-level-number", String(level));
+                setText("home-level-subtext", `${formatPts(Math.max(0, nextThreshold - xp))} XP left to Level ${level + 1}`);
+
+                const fill = document.getElementById("home-level-progress-fill");
+                if (fill) fill.style.width = `${progress.toFixed(2)}%`;
+
+                const ring = document.getElementById("home-xp-ring");
+                if (ring) ring.style.setProperty("--xp-ring-progress", `${progress.toFixed(2)}%`);
+                setText("home-xp-ring-level", String(level));
+                setText("home-xp-ring-sub", `${Math.round(progress)}%`);
+            };
+
+            window.addEventListener("anvi:home-points-updated", () => {
+                updateLevelUI();
+            });
+
+            window.addEventListener("anvi:lifetime-xp-updated", (event) => {
+                updateLevelUI(event.detail || {});
+            });
+
+            const readLeaderboardCache = () => {
+                try {
+                    const raw = localStorage.getItem("anvi-home-leaderboard-cache");
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+                    return entries.slice(0, 8);
+                } catch (_) {
+                    return [];
+                }
+            };
+
+            const initialsForName = (name) => {
+                const clean = String(name || "").trim().replace(/\s+/g, " ");
+                if (!clean) return "—";
+                const parts = clean.split(" ").filter(Boolean);
+                const first = (parts[0] || "").slice(0, 1);
+                const last = parts.length > 1 ? (parts[parts.length - 1] || "").slice(0, 1) : "";
+                const out = (first + last).toUpperCase();
+                return out || clean.slice(0, 2).toUpperCase();
+            };
+
+            const renderMiniLeaderboard = (entries) => {
+                const root = document.getElementById("home-mini-leaderboard");
+                if (!root) return;
+
+                const cleaned = (Array.isArray(entries) ? entries : []).filter((x) => x && x.name);
+                if (!cleaned.length) {
+                    root.innerHTML = `<div class="home-mini-lb-empty">No leaderboard data yet. Check the full leaderboard in Refer.</div>`;
+                    return;
+                }
+
+                for (let i = 1; i <= 3; i += 1) {
+                    const row = root.querySelector(`.home-mini-lb-item[data-rank="${i}"]`);
+                    const entry = cleaned[i - 1];
+                    if (!row) continue;
+
+                    // If there are fewer than 3 real users, hide remaining slots instead of
+                    // showing skeleton "fake" rows.
+                    row.hidden = !entry;
+                    if (!entry) {
+                        continue;
+                    }
+
+                    const nameEl = row.querySelector(".home-mini-lb-name");
+                    const subEl = row.querySelector(".home-mini-lb-sub");
+                    const ptsEl = row.querySelector(".home-mini-lb-points");
+                    const avatarEl = row.querySelector(".home-mini-lb-avatar");
+
+                    if (nameEl) nameEl.textContent = entry.name;
+                    if (subEl) {
+                        const referrals = safeInt(entry.referrals ?? 0, 0);
+                        subEl.textContent = referrals > 0 ? `Referrals: ${referrals.toLocaleString()}` : "All-time";
+                    }
+                    if (ptsEl) ptsEl.textContent = `${formatPts(safeNumber(entry.points ?? 0, 0))} pts`;
+                    if (avatarEl) avatarEl.textContent = initialsForName(entry.name);
+
+                    row.setAttribute("aria-label", `Rank ${i}: ${entry.name}, ${formatPts(safeNumber(entry.points ?? 0, 0))} points`);
+                }
+            };
+
+            const initMiniLeaderboard = () => {
+                let rendered = false;
+                const cached = readLeaderboardCache();
+                if (cached.length) {
+                    renderMiniLeaderboard(cached);
+                    rendered = true;
+                }
+
+                if (Array.isArray(window.__anviHomeLeaderboard) && window.__anviHomeLeaderboard.length) {
+                    renderMiniLeaderboard(window.__anviHomeLeaderboard);
+                    rendered = true;
+                }
+
+                window.addEventListener("anvi:leaderboard", (event) => {
+                    const entries = event?.detail?.entries;
+                    if (Array.isArray(entries) && entries.length) {
+                        renderMiniLeaderboard(entries);
+                        rendered = true;
+                    }
+                });
+
+                // If referral fetch fails or returns no leaderboard, avoid leaving a permanent skeleton.
+                window.setTimeout(() => {
+                    if (rendered) return;
+                    const latest = readLeaderboardCache();
+                    if (latest.length) {
+                        renderMiniLeaderboard(latest);
+                        return;
+                    }
+                    if (Array.isArray(window.__anviHomeLeaderboard) && window.__anviHomeLeaderboard.length) {
+                        renderMiniLeaderboard(window.__anviHomeLeaderboard);
+                        return;
+                    }
+                    renderMiniLeaderboard([]);
+                }, 4200);
+            };
+
+            const initAnnouncements = (records) => {
+                const bar = document.getElementById("home-live-bar");
+                const msg = document.getElementById("home-live-message");
+                if (!bar || !msg) return;
+
+                const todayKey = dateKeyFor(new Date());
+                const todayPts = sumPointsForDay(records, todayKey);
+
+                const messages = [
+                    { icon: "ri-fire-fill", text: "Weekend Bonus Active" },
+                    { icon: "ri-megaphone-fill", text: "150 users earned rewards today" },
+                    { icon: "ri-flashlight-fill", text: "Complete tasks for bonus rewards" },
+                    { icon: "ri-sparkling-2-line", text: `You earned +${formatPts(todayPts)} pts today` }
+                ];
+
+                let idx = 0;
+                let timer = null;
+
+                const render = (nextIdx) => {
+                    const item = messages[nextIdx % messages.length];
+                    msg.innerHTML = `<i class="${item.icon}" aria-hidden="true"></i> ${item.text}`;
+                };
+
+                const tick = () => {
+                    if (document.visibilityState !== "visible") return;
+                    bar.classList.add("is-switching");
+                    window.setTimeout(() => {
+                        idx = (idx + 1) % messages.length;
+                        render(idx);
+                        bar.classList.remove("is-switching");
+                    }, 240);
+                };
+
+                render(idx);
+                timer = window.setInterval(tick, 3800);
+
+                document.addEventListener("visibilitychange", () => {
+                    if (document.visibilityState !== "visible") return;
+                    tick();
+                });
+
+            window.addEventListener("beforeunload", () => {
+                    if (timer) window.clearInterval(timer);
+                });
+            };
+
+            const boot = () => {
+                const records = readActivity();
+                updateStreakUI(records);
+                updateTodayUI(records);
+                initAnnouncements(records);
+                updateLevelUI();
+                initMiniLeaderboard();
+
+                // Re-run level UI once auth.js updates #user-balance.
+                window.setTimeout(updateLevelUI, 700);
+            };
+
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", boot, { once: true });
+            } else {
+                boot();
+            }
+        })();
+        </script>
 
     </body>
 

@@ -2,18 +2,28 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 
-function buildReferralPrefix(name, email = '') {
-    const source = String(name || email || 'ANVI')
-        .normalize('NFKD')
-        .replace(/[^\x00-\x7F]/g, '')
-        .replace(/[^a-z0-9]/gi, '')
-        .toUpperCase();
+const REFERRAL_ANCHOR = 'ANVI';
 
-    return (source.slice(0, 6) || 'ANVI');
+function pickReferralInitial({ name = '', email = '' } = {}) {
+    const raw = String(name || email || 'A').trim();
+    const letter = raw.match(/[A-Za-z]/)?.[0] || 'A';
+    return letter.toUpperCase();
 }
 
-function randomReferralDigits() {
-    return crypto.randomInt(1000, 10000).toString();
+function randomDigits(length) {
+    const max = 10 ** length;
+    const min = 10 ** (length - 1);
+    return crypto.randomInt(min, max).toString();
+}
+
+function buildReferralCandidate({ name = '', email = '' } = {}) {
+    const initial = pickReferralInitial({ name, email });
+    return `${REFERRAL_ANCHOR}${initial}${randomDigits(4)}`;
+}
+
+function buildFallbackReferralCode({ name = '', email = '' } = {}) {
+    const initial = pickReferralInitial({ name, email });
+    return `${REFERRAL_ANCHOR}${initial}${randomDigits(4)}`;
 }
 
 const ActivitySchema = new mongoose.Schema({
@@ -68,10 +78,8 @@ const UserSchema = new mongoose.Schema({
 });
 
 UserSchema.statics.generateUniqueReferralCode = async function({ name = '', email = '', excludeUserId = null } = {}) {
-    const prefix = buildReferralPrefix(name, email);
-
     for (let attempt = 0; attempt < 25; attempt += 1) {
-        const candidate = `${prefix}${randomReferralDigits()}`;
+        const candidate = buildReferralCandidate({ name, email });
         const existingUser = await this.findOne({
             referralCode: candidate,
             ...(excludeUserId ? { _id: { $ne: excludeUserId } } : {})
@@ -82,7 +90,7 @@ UserSchema.statics.generateUniqueReferralCode = async function({ name = '', emai
         }
     }
 
-    return `${prefix}${Date.now().toString().slice(-6)}`;
+    return buildFallbackReferralCode({ name, email });
 };
 
 UserSchema.methods.ensureReferralCode = async function() {

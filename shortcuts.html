@@ -4,7 +4,7 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Notifications - AnviPayz</title>
+        <title>Shortcuts - AnviPayz</title>
 
         <script>
         (function () {
@@ -15,6 +15,9 @@
         })();
     </script>
 
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
             rel="stylesheet">
@@ -42,11 +45,11 @@
                     <a href="tasks.html" class="nav-item"><i
                             class="ri-task-line"></i> Tasks</a>
                     <a href="refer.html" class="nav-item"><i
-                            class="ri-share-forward-line"></i> Refer & Earn</a>
+                            class="ri-share-forward-line"></i> Refer &amp; Earn</a>
                     <a href="recharge.html" class="nav-item"><i
                             class="ri-flashlight-fill"></i> Recharge <span
                             class="badge-soon">New</span></a>
-                    <a href="notifications.html" class="nav-item active"><i
+                    <a href="notifications.html" class="nav-item"><i
                             class="ri-notification-3-line"></i>
                         Notifications</a>
                     <a href="support.html" class="nav-item"><i
@@ -62,71 +65,70 @@
             <main class="main-content page-main">
 
                 <div class="mobile-header compact-mobile-header">
-                    <button class="icon-btn" id="menu-btn"><i
+                    <button class="icon-btn" id="menu-btn" aria-label="Open menu"><i
                             class="ri-menu-line"></i></button>
-                    <div class="brand app-shell-title">Notifications</div>
+                    <div class="brand app-shell-title">Shortcuts</div>
                     <div class="mobile-header-actions">
-                        <div id="mobile-unread-badge"
-                            class="status-chip status-chip--compact">
-                            0 Unread
-                        </div>
                         <div id="mobile-token-badge"
                             class="token-badge token-badge--compact">
                             <i class="ri-coin-fill token-badge__icon"></i>
                             <span id="mobile-token-count">0.00</span>
                         </div>
 
-                        <button class="icon-btn mobile-theme-toggle"><i
+                        <button class="icon-btn mobile-theme-toggle"
+                            aria-label="Toggle theme"><i
                                 class="ri-moon-line"></i></button>
 
-                        
+                        <a href="profile.html" class="icon-btn"
+                            title="Profile" aria-label="Profile"><i
+                                class="ri-user-line"></i></a>
                     </div>
                 </div>
 
                 <header class="topbar">
                     <div class="page-title">
-                        <h1>Notifications</h1>
-                        <p class="page-subtitle">Recent updates &
-                            rewards. <span id="unread-count-label">Unread:
-                                0</span></p>
+                        <h1>Shortcuts</h1>
+                        <p class="page-subtitle">Choose what shows on the Home quick actions.</p>
                     </div>
                     <div class="topbar-actions">
-                        <div id="header-unread-badge"
-                            class="status-chip">
-                            0 Unread
-                        </div>
-                        <button class="icon-btn" id="mark-all-read-btn"
-                            title="Mark All as Read"><i
-                                class="ri-check-double-line"></i></button>
                         <div id="header-token-badge"
                             class="token-badge">
                             <i class="ri-coin-fill token-badge__icon"></i>
                             <span id="header-token-count">0.00</span> Tokens
                         </div>
-                        
-                        <button class="icon-btn" id="theme-toggle"><i
+                        <button class="icon-btn" id="theme-toggle"
+                            aria-label="Toggle theme"><i
                                 class="ri-moon-line"></i></button>
-                        
                         <a href="profile.html" class="icon-btn"
-                            title="Profile"><i class="ri-user-line"></i></a>
-                            </div>
+                            title="Profile" aria-label="Profile"><i class="ri-user-line"></i></a>
+                    </div>
                 </header>
 
-                <div id="notification-list" class="stack-list stack-list--tall">
-                    <div class="loading-block loading-block--tall">
-                        <div class="spinner"></div>
-                        Checking updates...
+                <section class="card shortcuts-card">
+                    <div class="shortcuts-toolbar">
+                        <div class="shortcuts-toolbar__copy">
+                            <div class="shortcuts-title">Pinned on Home</div>
+                            <div class="shortcuts-sub">Pick up to 8 items. Order = left to right.</div>
+                        </div>
+                        <div class="shortcuts-toolbar__actions">
+                            <button type="button" class="btn-primary--ghost btn-inline shortcuts-edit-btn" id="shortcuts-edit-btn"
+                                aria-label="Edit shortcuts" title="Edit shortcuts" aria-pressed="false">
+                                <i class="ri-edit-2-line"></i>
+                                <span class="shortcuts-edit-label">Edit</span>
+                            </button>
+                            <button type="button" class="btn-primary btn-inline" id="shortcuts-save-btn" hidden>
+                                <i class="ri-save-3-line"></i> Save
+                            </button>
+                        </div>
                     </div>
-                </div>
-                <footer class="app-footer">
-                    <a href="privacy.html">Privacy Policy</a>
-                    <span>•</span>
-                    <a href="terms.html">Terms & Conditions</a>
-                    <span>•</span>
-                    <a href="refund.html">Refund Policy</a>
-                    <span>•</span>
-                    <a href="disclaimer.html">Disclaimer</a>
-                </footer>
+
+                    <div id="shortcuts-list" class="shortcuts-grid">
+                        <div class="loading-block">
+                            <div class="spinner"></div>
+                            Loading shortcuts...
+                        </div>
+                    </div>
+                </section>
 
             </main>
 
@@ -139,14 +141,15 @@
                         class="ri-flashlight-fill"></i><span>Recharge</span></a>
                 <a href="tasks.html" class="mobile-nav-item"><i
                         class="ri-task-line"></i><span>Tasks</span></a>
-                <a href="notifications.html" class="mobile-nav-item active"><i
-                        class="ri-notification-3-line"></i><span>Alerts</span></a>
+                <a href="spin.html" class="mobile-nav-item">
+                    <i class="ri-refresh-line"></i>
+                    <span>Spin</span>
+                </a>
             </nav>
 
         </div>
 
         <script src="config.js"></script>
-
         <script defer src="js/auth.js?v=20260511-1"></script>
 
     </body>

@@ -823,3 +823,63 @@ html[data-theme="dark"] body.legal-body::before {
         grid-auto-columns: minmax(205px, 94%);
     }
 }
+
+@media (max-width: 320px) {
+    .legal-shell {
+        padding: 6px 6px 18px;
+    }
+
+    .legal-topbar,
+    .legal-hero,
+    .legal-surface,
+    .legal-nav-card,
+    .legal-link-card {
+        border-radius: 14px;
+        padding: 12px;
+    }
+
+    .legal-brand-copy h1 {
+        font-size: 0.92rem;
+    }
+
+    .legal-brand-copy p,
+    .legal-meta,
+    .legal-footer,
+    .legal-inline-note {
+        font-size: 0.72rem;
+    }
+
+    .legal-hero h1 {
+        font-size: 1.36rem;
+    }
+}
+
+@media (max-width: 280px) {
+    .legal-shell {
+        padding: 4px 4px 14px;
+    }
+
+    .legal-topbar,
+    .legal-hero,
+    .legal-surface,
+    .legal-nav-card,
+    .legal-link-card {
+        border-radius: 12px;
+        padding: 10px;
+    }
+
+    .legal-brand-copy h1 {
+        font-size: 0.82rem;
+    }
+
+    .legal-brand-copy p,
+    .legal-meta,
+    .legal-footer,
+    .legal-inline-note {
+        font-size: 0.64rem;
+    }
+
+    .legal-hero h1 {
+        font-size: 1.16rem;
+    }
+}

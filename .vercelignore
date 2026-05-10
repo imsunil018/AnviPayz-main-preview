@@ -1,0 +1,47 @@
+# Vercel deploy ignore list (frontend-only)
+
+# Backend entrypoints / folders (root-anchored)
+/server.js
+/server/
+/api/
+/routes/
+/models/
+/controllers/
+/middleware/
+/services/
+/config/
+/database/
+/db/
+/utils/
+
+# Backend dependency manifests (avoid triggering Node builds)
+/package.json
+/package-lock.json
+/npm-shrinkwrap.json
+/yarn.lock
+/pnpm-lock.yaml
+
+# Dependencies (anywhere)
+node_modules/
+**/node_modules/
+
+# Environment files & secrets
+/.env
+/.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Logs
+/logs/
+*.log
+
+# Local/dev tooling
+/.git/
+/.vscode/
+/.tmpcfg/
+/.vercel/
+/.firebase/
+/.firebase-config/

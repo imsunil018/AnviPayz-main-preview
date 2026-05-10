@@ -7,6 +7,36 @@ const API_BASE_URL =
 export const ADMIN_API_BASE = `${API_BASE_URL}/api/admin`;
 const ADMIN_TOKEN_KEY = "anvi-admin-token";
 
+export async function fetchBackendHealth({ timeoutMs = 6000 } = {}) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/test`, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            signal: controller.signal
+        });
+
+        const payload = await response.json().catch(() => null);
+        return {
+            ok: Boolean(response.ok),
+            status: response.status,
+            database: payload?.database || "",
+            payload
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            status: 0,
+            database: "",
+            payload: null
+        };
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
 export function getAdminToken() {
     const token = String(localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim();
     if (!token) {
@@ -79,6 +109,9 @@ export async function apiRequest(path, { method = "GET", body, auth = true } = {
             : `Request failed with status ${response.status}.`;
         const error = new Error(message);
         error.status = response.status;
+        if (typeof payload === "object" && payload?.code) {
+            error.code = payload.code;
+        }
         throw error;
     }
 

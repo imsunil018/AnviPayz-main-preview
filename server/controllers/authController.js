@@ -17,8 +17,30 @@ const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'anvipayz@gmail.com';
 const SENDER_NAME = process.env.BREVO_SENDER_NAME || 'AnviPayz';
 const WELCOME_POINTS = 50;
-const REFERRAL_BONUS_POINTS = 250;  // Changed from 150 to 250
+const REFERRAL_REFERRER_POINTS = 250;
+const REFERRAL_NEW_USER_POINTS = 150;
+const REFERRAL_MILESTONE_SIZE = 15;
+const REFERRAL_MILESTONE_BONUS_POINTS = 1000;
+const REFERRAL_DAILY_LIMIT = 10;
+const INDIA_TIME_ZONE = 'Asia/Kolkata';
+const INDIA_TIME_ZONE_OFFSET = '+05:30';
 const POLICY_VERSION = '2026-03-31';
+
+function indiaDateKey(value = Date.now()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: INDIA_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(new Date(value));
+}
+
+function indiaDayRange(value = Date.now()) {
+    const key = indiaDateKey(value);
+    const start = new Date(`${key}T00:00:00.000${INDIA_TIME_ZONE_OFFSET}`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    return { start, end, key };
+}
 
 const readBrevoError = async (response) => {
     const rawBody = await response.text();
@@ -244,20 +266,49 @@ const registerSendOTP = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please accept the Terms & Conditions to continue.' });
         }
 
+        const isValidReferralCode = (code) => {
+            const normalized = String(code || '').trim().toUpperCase();
+            if (!normalized) {
+                return false;
+            }
+            return /^[0-9]{4,5}ANVI[0-9]{4,5}$/.test(normalized) || /^ANVI[A-Z][0-9]{4}$/.test(normalized);
+        };
+
         // Validate referral code format if provided
         if (referCode) {
-            if (!/^[A-Z0-9]{7,12}$/.test(referCode)) {
+            if (!isValidReferralCode(referCode)) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Invalid referral code format. Use format like: BABUL1234'
+                    message: 'Invalid referral code format. Use format like: ANVIA1234'
                 });
             }
 
             // Only keep referral code if the referrer exists.
-            const referrer = await User.findOne({ referralCode: referCode });
+            let referrer = await User.findOne({ referralCode: referCode });
+            if (referrer && await purgeUserIfExpired(referrer)) {
+                referrer = null;
+            }
+
+            if (referrer && isPendingDeletion(referrer)) {
+                referrer = null;
+            }
+
             if (!referrer) {
                 console.warn(`Unknown referral code provided during registration: ${referCode}`);
                 referCode = null;
+            } else {
+                const { start, end } = indiaDayRange();
+                const todayCount = await User.countDocuments({
+                    referredByCode: referCode,
+                    joinedAt: { $gte: start, $lt: end }
+                });
+
+                if (todayCount >= REFERRAL_DAILY_LIMIT) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'This referral code has reached the daily limit. Try again tomorrow.'
+                    });
+                }
             }
         }
 
@@ -421,7 +472,7 @@ const registerVerifyOTP = async (req, res) => {
         const email = req.body?.email?.trim().toLowerCase();
         const otp = req.body?.otp?.trim();
         const name = req.body?.name?.trim();
-        let referCode = req.body?.referCode?.trim().toUpperCase();
+        const bodyReferCode = req.body?.referCode?.trim().toUpperCase();
         const acceptedTerms = Boolean(req.body?.acceptedTerms);
 
         if (!email || !otp || !name) {
@@ -456,6 +507,13 @@ const registerVerifyOTP = async (req, res) => {
             });
         }
 
+        const storedReferCode = String(otpRecord.referCode || '').trim().toUpperCase();
+        let referCode = storedReferCode || (bodyReferCode || '');
+
+        if (storedReferCode && bodyReferCode && storedReferCode !== bodyReferCode) {
+            console.warn(`Referral code mismatch during registration verify. Using stored referCode=${storedReferCode}, body referCode=${bodyReferCode}`);
+        }
+
         let existingUser = await User.findOne({ email });
         if (existingUser && await purgeUserIfExpired(existingUser)) {
             existingUser = null;
@@ -479,6 +537,21 @@ const registerVerifyOTP = async (req, res) => {
         }
 
         let referrer = null;
+        const isValidReferralCode = (code) => {
+            const normalized = String(code || '').trim().toUpperCase();
+            if (!normalized) {
+                return false;
+            }
+            return /^[0-9]{4,5}ANVI[0-9]{4,5}$/.test(normalized) || /^ANVI[A-Z][0-9]{4}$/.test(normalized);
+        };
+
+        if (referCode) {
+            if (!isValidReferralCode(referCode)) {
+                console.warn(`Invalid referral code format during registration verify: ${referCode}`);
+                referCode = '';
+            }
+        }
+
         if (referCode) {
             referrer = await User.findOne({ referralCode: referCode });
             if (referrer && await purgeUserIfExpired(referrer)) {
@@ -491,7 +564,19 @@ const registerVerifyOTP = async (req, res) => {
 
             if (!referrer) {
                 console.warn(`Referral code lookup failed during registration verify: ${referCode}`);
-                referCode = null;
+                referCode = '';
+            } else {
+                const { start, end } = indiaDayRange();
+                const todayCount = await User.countDocuments({
+                    referredByCode: referCode,
+                    joinedAt: { $gte: start, $lt: end }
+                });
+
+                if (todayCount >= REFERRAL_DAILY_LIMIT) {
+                    console.warn(`Referral daily limit reached for code=${referCode} (${todayCount}/${REFERRAL_DAILY_LIMIT}). Skipping referral bonus.`);
+                    referrer = null;
+                    referCode = '';
+                }
             }
         }
 
@@ -517,31 +602,24 @@ const registerVerifyOTP = async (req, res) => {
 
         let referralReward = null;
         let referralNotice = null;
+        let referralBonusAwarded = 0;
+        let milestoneBonusAwarded = 0;
 
         if (referrer) {
             const referrerName = String(referrer.name || 'a friend').trim() || 'a friend';
 
-            user.points += REFERRAL_BONUS_POINTS;
+            user.points += REFERRAL_NEW_USER_POINTS;
+            referralBonusAwarded = REFERRAL_NEW_USER_POINTS;
             appendActivity(user, {
                 title: 'Referral bonus',
                 message: `Referral code ${referCode} applied successfully. Referred by ${referrerName}.`,
-                amount: REFERRAL_BONUS_POINTS,
+                amount: REFERRAL_NEW_USER_POINTS,
                 type: 'referral'
             });
-
-            referrer.points = Number(referrer.points || 0) + REFERRAL_BONUS_POINTS;
-            referrer.referralEarnings = Number(referrer.referralEarnings || 0) + REFERRAL_BONUS_POINTS;
-            appendActivity(referrer, {
-                title: 'Referral joined',
-                message: `${name} joined using your referral code.`,
-                amount: REFERRAL_BONUS_POINTS,
-                type: 'referral'
-            });
-            await referrer.save();
 
             referralReward = {
-                message: `Referral code applied successfully. You earned ${REFERRAL_BONUS_POINTS} bonus points from ${referrerName}.`,
-                points: REFERRAL_BONUS_POINTS,
+                message: `Referral code applied successfully. You earned ${REFERRAL_NEW_USER_POINTS} bonus points from ${referrerName}.`,
+                points: REFERRAL_NEW_USER_POINTS,
                 referrerName
             };
 
@@ -556,12 +634,54 @@ const registerVerifyOTP = async (req, res) => {
         user.loginCount = 1;
         await user.save();
 
+        if (referrer) {
+            const totalReferrals = await User.countDocuments({ referredByCode: referCode });
+            const milestoneNumber = Math.floor(totalReferrals / REFERRAL_MILESTONE_SIZE);
+            const hitsMilestone = totalReferrals > 0 && (totalReferrals % REFERRAL_MILESTONE_SIZE === 0);
+            const milestoneClaimKey = milestoneNumber > 0 ? `referral-bonus-${milestoneNumber}` : '';
+
+            referrer.points = Number(referrer.points || 0) + REFERRAL_REFERRER_POINTS;
+            referrer.referralEarnings = Number(referrer.referralEarnings || 0) + REFERRAL_REFERRER_POINTS;
+            appendActivity(referrer, {
+                title: 'Referral joined',
+                message: `${name} joined using your referral code.`,
+                amount: REFERRAL_REFERRER_POINTS,
+                type: 'referral'
+            });
+
+            if (hitsMilestone && milestoneClaimKey) {
+                const existingKeys = Array.isArray(referrer.rewardClaimKeys) ? referrer.rewardClaimKeys : [];
+                if (!existingKeys.includes(milestoneClaimKey)) {
+                    referrer.rewardClaimKeys = [...existingKeys, milestoneClaimKey].slice(0, 250);
+                    referrer.points += REFERRAL_MILESTONE_BONUS_POINTS;
+                    referrer.referralEarnings += REFERRAL_MILESTONE_BONUS_POINTS;
+                    milestoneBonusAwarded = REFERRAL_MILESTONE_BONUS_POINTS;
+                    appendActivity(referrer, {
+                        title: 'Referral milestone bonus',
+                        message: `Milestone unlocked: ${totalReferrals} referrals completed. Bonus credited.`,
+                        amount: REFERRAL_MILESTONE_BONUS_POINTS,
+                        type: 'referral'
+                    });
+                }
+            }
+
+            await referrer.save();
+        }
+
         if (referralNotice) {
             try {
+                const referredUserMessage = referralBonusAwarded > 0
+                    ? `Referral code applied successfully. You earned ${referralBonusAwarded} bonus points from ${referralNotice.referrerName}.`
+                    : `Referral code applied successfully.`;
+
+                const referrerMessage = milestoneBonusAwarded > 0
+                    ? `${referralNotice.referredName} joined using your referral code. +${REFERRAL_REFERRER_POINTS} points, plus ${milestoneBonusAwarded} milestone bonus!`
+                    : `${referralNotice.referredName} joined using your referral code. +${REFERRAL_REFERRER_POINTS} points credited.`;
+
                 await Notification.insertMany([
                     {
                         title: 'Referral bonus',
-                        message: `Referral code applied successfully. You earned ${REFERRAL_BONUS_POINTS} bonus points from ${referralNotice.referrerName}.`,
+                        message: referredUserMessage,
                         type: 'referral',
                         audience: 'user',
                         userId: String(user._id),
@@ -572,7 +692,7 @@ const registerVerifyOTP = async (req, res) => {
                     },
                     {
                         title: 'Referral joined',
-                        message: `${referralNotice.referredName} joined using your referral code.`,
+                        message: referrerMessage,
                         type: 'referral',
                         audience: 'user',
                         userId: referralNotice.referrerId,

@@ -48,18 +48,44 @@
         footer { margin-top: 6rem; padding-top: 2rem; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 0.9rem; }
         footer a { color: var(--primary); text-decoration: none; margin: 0 0.5rem; }
         @media (max-width: 640px) { .legal-page { padding: 3rem 1.25rem; } h1 { font-size: 2.2rem; } h2 { font-size: 1.4rem; } .notice-box { padding: 1.5rem; } }
+        @media (max-width: 767px) { footer { display: none; } }
         </style>
-        <script>
-            (function() {
-                const savedTheme = localStorage.getItem('anvi-theme') || 'dark';
-                document.documentElement.setAttribute('data-theme', savedTheme);
-            })();
-        </script>
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('anvi-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+
+        (function () {
+            const backLink = document.querySelector(".nav-back");
+            const label = document.querySelector(".nav-back-label");
+            if (!backLink || !label) {
+                return;
+            }
+
+            const rawRef = String(document.referrer || "");
+            const hasToken = Boolean(localStorage.getItem("anvi-token"));
+            const fallback = hasToken ? "home.html" : "index.html";
+
+            let href = "";
+            try {
+                const refUrl = rawRef ? new URL(rawRef) : null;
+                if (refUrl && refUrl.origin === window.location.origin) {
+                    href = rawRef;
+                }
+            } catch (error) {
+                href = "";
+            }
+
+            backLink.href = href || fallback;
+            label.textContent = rawRef.toLowerCase().includes("legal.html") ? "Legal Center" : "Back";
+        })();
+    </script>
     </head>
     <body>
         <div class="legal-page">
             <a href="legal.html" class="nav-back"><i
-                    class="ri-arrow-left-s-line"></i> Legal Center</a>
+                    class="ri-arrow-left-s-line"></i><span class="nav-back-label">Legal Center</span></a>
             <header>
                 <h1>Disclaimer</h1>
                 <div class="meta">Last updated: March 31, 2026</div>

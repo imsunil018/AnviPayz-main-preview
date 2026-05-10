@@ -1,5 +1,6 @@
 import {
     requestFirst,
+    fetchBackendHealth,
     setAdminToken,
     clearAdminToken,
     getAdminToken,
@@ -20,7 +21,10 @@ const state = {
     leaderboardMode: "refer",
     userSort: "newest",
     userSearch: "",
-    refreshTimer: null
+    refreshTimer: null,
+    connectionStatus: "signed_out",
+    retryTimer: null,
+    lastSyncAt: 0
 };
 
 const refs = {
@@ -46,7 +50,11 @@ const refs = {
     topReferralUser: document.getElementById("topReferralUser"),
     overviewTopUser: document.getElementById("overviewTopUser"),
     overviewTopReferrer: document.getElementById("overviewTopReferrer"),
-    overviewSyncStatus: document.getElementById("overviewSyncStatus")
+    overviewSyncStatus: document.getElementById("overviewSyncStatus"),
+    systemBanner: document.getElementById("systemBanner"),
+    systemBannerTitle: document.getElementById("systemBannerTitle"),
+    systemBannerMessage: document.getElementById("systemBannerMessage"),
+    systemBannerRetryBtn: document.getElementById("systemBannerRetryBtn")
 };
 
 initTheme();
@@ -62,11 +70,37 @@ async function bootstrap() {
         return;
     }
 
+    const dbOnline = await ensureDatabaseOnline();
+    if (!dbOnline) {
+        showApp({ status: "offline" });
+        startRetryLoop();
+        return;
+    }
+
     try {
         await refreshAdminData();
-        showApp();
-        state.refreshTimer = window.setInterval(refreshAdminData, 30000);
+        showApp({ status: "live" });
+        state.refreshTimer = window.setInterval(() => {
+            refreshAdminData().catch(handleBackgroundRefreshError);
+        }, 30000);
     } catch (error) {
+        if (error?.code === "DB_OFFLINE" || error?.status === 503) {
+            state.users = [];
+            state.tasks = [];
+            state.activity = [];
+            state.overview = {};
+            renderOverview();
+            renderUsers();
+            renderTasks();
+            renderLeaderboards();
+            renderActivity();
+            renderJoinAlerts();
+            showToast(error.message || "Database is offline. Start MongoDB and reload to sync.", "warning");
+            showApp({ status: "offline" });
+            startRetryLoop();
+            return;
+        }
+
         clearAdminToken();
         showToast(error.message || "Session expired. Please sign in again.", "error");
         showAuthScreen();
@@ -79,6 +113,7 @@ function bindStaticEvents() {
     document.getElementById("themeToggle")?.addEventListener("click", toggleTheme);
     document.getElementById("mobileToggle")?.addEventListener("click", toggleSidebar);
     refs.sidebarOverlay?.addEventListener("click", closeSidebar);
+    refs.systemBannerRetryBtn?.addEventListener("click", () => void retrySync());
     document.getElementById("userSearch")?.addEventListener("input", (event) => {
         state.userSearch = event.target.value || "";
         renderUsers();
@@ -129,8 +164,14 @@ async function handleLogin(event) {
     event.preventDefault();
     const email = document.getElementById("loginEmail")?.value.trim();
     const password = document.getElementById("loginPassword")?.value;
+    const submitBtn = document.querySelector("#loginForm button[type=\"submit\"]");
 
     try {
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Signing in...";
+        }
+
         const data = await requestFirst([
             { path: "/login", method: "POST", body: { email, password } },
             { path: "/auth/login", method: "POST", body: { email, password } }
@@ -141,16 +182,69 @@ async function handleLogin(event) {
         }
 
         setAdminToken(data.token);
-        await refreshAdminData();
-        if (state.refreshTimer) {
-            clearInterval(state.refreshTimer);
+
+        try {
+            const dbOnline = await ensureDatabaseOnline();
+            if (!dbOnline) {
+                state.users = [];
+                state.tasks = [];
+                state.activity = [];
+                state.overview = {};
+                renderOverview();
+                renderUsers();
+                renderTasks();
+                renderLeaderboards();
+                renderActivity();
+                renderJoinAlerts();
+                showApp({ status: "offline" });
+                showToast("Logged in, but database is offline.", "warning");
+                startRetryLoop();
+                return;
+            }
+
+            await refreshAdminData();
+            if (state.refreshTimer) {
+                clearInterval(state.refreshTimer);
+            }
+            state.refreshTimer = window.setInterval(() => {
+                refreshAdminData().catch(handleBackgroundRefreshError);
+            }, 30000);
+            showApp({ status: "live" });
+            showToast("Admin console ready.", "success");
+            playNotificationSound();
+        } catch (refreshError) {
+            if (refreshError?.code === "DB_OFFLINE" || refreshError?.status === 503) {
+                // Let the admin UI load even when MongoDB is offline, so the user can see the console.
+                state.users = [];
+                state.tasks = [];
+                state.activity = [];
+                state.overview = {};
+                renderOverview();
+                renderUsers();
+                renderTasks();
+                renderLeaderboards();
+                renderActivity();
+                renderJoinAlerts();
+                showApp({ status: "offline" });
+                showToast(refreshError.message || "Logged in, but database is offline.", "warning");
+                startRetryLoop();
+                return;
+            }
+
+            throw refreshError;
         }
-        state.refreshTimer = window.setInterval(refreshAdminData, 30000);
-        showApp();
-        showToast("Admin console ready.", "success");
-        playNotificationSound();
     } catch (error) {
+        if (error?.code === "DB_OFFLINE" || error?.status === 503) {
+            showToast(error.message || "Database is offline. Start MongoDB and retry.", "warning");
+            return;
+        }
+
         showToast(error.message || "Invalid admin credentials.", "error");
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Login";
+        }
     }
 }
 
@@ -201,11 +295,21 @@ async function refreshAdminData() {
     renderLeaderboards();
     renderActivity();
     renderJoinAlerts();
-    setLiveStatus(true);
+    state.lastSyncAt = Date.now();
+    stopRetryLoop();
+    setConnectionStatus("live");
+    setLiveStatus("live");
+
+    if (!state.refreshTimer) {
+        state.refreshTimer = window.setInterval(() => {
+            refreshAdminData().catch(handleBackgroundRefreshError);
+        }, 30000);
+    }
 }
 
 function renderOverview() {
     const overview = state.overview;
+    const live = state.connectionStatus === "live";
     const computedPoints = state.users.reduce((sum, user) => sum + user.balance, 0);
     const computedTokens = state.users.reduce((sum, user) => sum + toNumber(user.tokens, 0), 0);
     const computedTokensConverted = state.users.reduce((sum, user) => sum + toNumber(user.tokensConverted, 0), 0);
@@ -215,15 +319,27 @@ function renderOverview() {
     const recentReferralJoins = state.users.filter((user) => user.joinType === "referral" && Date.now() - toMillis(user.joinedAt) < 30 * 86_400_000).length;
     const visits24 = state.users.filter((user) => Date.now() - toMillis(user.lastActive) < 86_400_000).length;
 
-    setStat("statUsers", toNumber(overview.totalUsers, state.users.length));
-    setStat("statBalance", toNumber(overview.totalPoints, computedPoints));
-    setTokenStat("statTokens", toNumber(overview.totalTokens, computedTokens));
-    setTokenStat("statTokensConverted", toNumber(overview.totalTokensConverted, computedTokensConverted));
-    setStat("statUsersConverted", toNumber(overview.usersConverted, computedUsersConverted));
-    setStat("statTasks", toNumber(overview.activeTasks, activeTasks));
-    setStat("statVisits24", toNumber(overview.visits24h, visits24));
-    setStat("statJoins30", toNumber(overview.joins30d, recentJoins));
-    setStat("statReferralJoins30", toNumber(overview.referralJoins30d, recentReferralJoins));
+    if (live) {
+        setStat("statUsers", toNumber(overview.totalUsers, state.users.length));
+        setStat("statBalance", toNumber(overview.totalPoints, computedPoints));
+        setTokenStat("statTokens", toNumber(overview.totalTokens, computedTokens));
+        setTokenStat("statTokensConverted", toNumber(overview.totalTokensConverted, computedTokensConverted));
+        setStat("statUsersConverted", toNumber(overview.usersConverted, computedUsersConverted));
+        setStat("statTasks", toNumber(overview.activeTasks, activeTasks));
+        setStat("statVisits24", toNumber(overview.visits24h, visits24));
+        setStat("statJoins30", toNumber(overview.joins30d, recentJoins));
+        setStat("statReferralJoins30", toNumber(overview.referralJoins30d, recentReferralJoins));
+    } else {
+        setStat("statUsers", "—");
+        setStat("statBalance", "—");
+        setTokenStat("statTokens", "—");
+        setTokenStat("statTokensConverted", "—");
+        setStat("statUsersConverted", "—");
+        setStat("statTasks", "—");
+        setStat("statVisits24", "—");
+        setStat("statJoins30", "—");
+        setStat("statReferralJoins30", "—");
+    }
 
     const topPointsUser = [...state.users].sort((a, b) => b.balance - a.balance)[0];
     const topReferralUser = [...state.users].sort((a, b) => b.totalReferrals - a.totalReferrals)[0];
@@ -231,11 +347,18 @@ function renderOverview() {
     if (refs.topReferralUser) refs.topReferralUser.textContent = topReferralUser ? `${topReferralUser.fullName} - ${topReferralUser.totalReferrals}` : "-";
     if (refs.overviewTopUser) refs.overviewTopUser.textContent = topPointsUser ? topPointsUser.fullName : "-";
     if (refs.overviewTopReferrer) refs.overviewTopReferrer.textContent = topReferralUser ? topReferralUser.fullName : "-";
-    if (refs.overviewSyncStatus) refs.overviewSyncStatus.textContent = state.activity.length ? "Live data ready" : "Waiting for activity";
+    if (live && refs.overviewSyncStatus) {
+        refs.overviewSyncStatus.textContent = state.activity.length ? "Live data ready" : "Waiting for activity";
+    }
 }
 
 function renderUsers() {
     if (!refs.userTableBody) return;
+
+    if (state.connectionStatus !== "live") {
+        refs.userTableBody.innerHTML = `<tr><td class="table-empty" colspan="10">Database offline. Click Retry to sync once MongoDB is running.</td></tr>`;
+        return;
+    }
 
     let users = [...state.users];
     const keyword = state.userSearch.trim().toLowerCase();
@@ -276,6 +399,11 @@ function renderUsers() {
 function renderTasks() {
     if (!refs.taskTableBody) return;
 
+    if (state.connectionStatus !== "live") {
+        refs.taskTableBody.innerHTML = `<tr><td class="table-empty" colspan="6">Database offline. Click Retry to sync tasks.</td></tr>`;
+        return;
+    }
+
     refs.taskTableBody.innerHTML = state.tasks.length ? state.tasks.map((task) => `
         <tr>
             <td data-label="Title">${escapeHtml(task.title)}</td>
@@ -291,6 +419,22 @@ function renderTasks() {
 }
 
 function renderLeaderboards() {
+    if (state.connectionStatus !== "live") {
+        if (refs.leaderboardTopCards) {
+            refs.leaderboardTopCards.innerHTML = `
+                <article class="stat-card">
+                    <div class="stat-top"><span>Leaderboard</span><i class="ri-cloud-off-line"></i></div>
+                    <div class="stat-val">Database offline</div>
+                    <p class="user-sub">Retry sync to load rankings.</p>
+                </article>
+            `;
+        }
+        if (refs.leaderboardTableBody) {
+            refs.leaderboardTableBody.innerHTML = `<tr><td class="table-empty" colspan="4">Database offline. Retry sync.</td></tr>`;
+        }
+        return;
+    }
+
     const users = [...state.users].sort((a, b) => state.leaderboardMode === "refer"
         ? b.totalReferrals - a.totalReferrals
         : b.balance - a.balance);
@@ -322,7 +466,9 @@ function renderLeaderboards() {
 }
 
 function renderActivity() {
-    const items = state.activity.length ? state.activity : [{ message: "No admin activity yet.", time: Date.now() }];
+    const items = state.connectionStatus !== "live"
+        ? [{ message: "Database offline. Activity will appear once sync is restored.", time: Date.now() }]
+        : (state.activity.length ? state.activity : [{ message: "No admin activity yet.", time: Date.now() }]);
     const markup = items.map(renderFeedItem).join("");
     if (refs.miniFeed) refs.miniFeed.innerHTML = markup;
     if (refs.fullFeed) refs.fullFeed.innerHTML = markup;
@@ -330,6 +476,10 @@ function renderActivity() {
 
 function renderJoinAlerts() {
     if (!refs.joinAlerts) return;
+    if (state.connectionStatus !== "live") {
+        refs.joinAlerts.innerHTML = `<div class="feed-item"><div class="feed-title">Database offline. Join alerts paused.</div></div>`;
+        return;
+    }
     const items = [...state.users]
         .sort((a, b) => toMillis(b.joinedAt) - toMillis(a.joinedAt))
         .slice(0, 10)
@@ -444,14 +594,17 @@ async function handleTaskTableActions(event) {
 function showAuthScreen() {
     refs.authScreen?.classList.remove("hidden");
     refs.appInterface?.classList.add("hidden");
-    setLiveStatus(false);
+    setLiveStatus("signed_out");
+    setConnectionStatus("signed_out");
+    stopRetryLoop();
 }
 
-function showApp() {
+function showApp({ status = "live" } = {}) {
     refs.authScreen?.classList.add("hidden");
     refs.appInterface?.classList.remove("hidden");
     switchTab("overview");
-    setLiveStatus(true);
+    setLiveStatus(status);
+    setConnectionStatus(status);
 }
 
 function logout() {
@@ -461,6 +614,161 @@ function logout() {
     }
     clearAdminToken();
     showAuthScreen();
+}
+
+function setConnectionStatus(status) {
+    state.connectionStatus = status === "offline" || status === "signed_out" ? status : "live";
+    updateSystemBanner();
+    toggleDataActions(state.connectionStatus === "live");
+}
+
+async function ensureDatabaseOnline() {
+    const health = await fetchBackendHealth({ timeoutMs: 6500 });
+    const dbOk = health.ok && String(health.database || "").toLowerCase() === "connected";
+
+    if (!dbOk) {
+        setConnectionStatus("offline");
+        renderOverview();
+        renderUsers();
+        renderTasks();
+        renderLeaderboards();
+        renderActivity();
+        renderJoinAlerts();
+        return false;
+    }
+
+    setConnectionStatus("live");
+    return true;
+}
+
+function updateSystemBanner() {
+    const banner = refs.systemBanner;
+    if (!banner) return;
+
+    banner.classList.remove("is-live", "is-signedout");
+
+    if (state.connectionStatus === "live") {
+        banner.classList.add("hidden");
+        return;
+    }
+
+    banner.classList.remove("hidden");
+
+    if (state.connectionStatus === "signed_out") {
+        banner.classList.add("is-signedout");
+        if (refs.systemBannerTitle) refs.systemBannerTitle.textContent = "Signed out";
+        if (refs.systemBannerMessage) refs.systemBannerMessage.textContent = "Please sign in again to access admin tools.";
+        if (refs.systemBannerRetryBtn) refs.systemBannerRetryBtn.textContent = "Login";
+        return;
+    }
+
+    if (refs.systemBannerTitle) refs.systemBannerTitle.textContent = "Database offline";
+    if (refs.systemBannerMessage) refs.systemBannerMessage.textContent = "MongoDB is not connected. Start MongoDB / check MONGO_URI. If using Atlas, whitelist your IP in Network Access, then Retry.";
+    if (refs.systemBannerRetryBtn) refs.systemBannerRetryBtn.textContent = "Retry";
+}
+
+function toggleDataActions(enabled) {
+    const selectors = [
+        "#openTaskModalBtn",
+        "#openGiftAllBtn",
+        "#overviewCreateTaskBtn",
+        "#overviewGiftAllBtn",
+        "#taskForm button[type=\"submit\"]",
+        "#giftForm button[type=\"submit\"]",
+        "#giftAllForm button[type=\"submit\"]"
+    ];
+
+    selectors.forEach((selector) => {
+        document.querySelectorAll(selector).forEach((el) => {
+            if (el instanceof HTMLButtonElement) {
+                el.disabled = !enabled;
+            }
+        });
+    });
+}
+
+async function retrySync() {
+    if (state.connectionStatus === "signed_out") {
+        showAuthScreen();
+        return;
+    }
+
+    try {
+        const dbOnline = await ensureDatabaseOnline();
+        if (!dbOnline) {
+            showToast("Database is still offline.", "warning");
+            startRetryLoop();
+            return;
+        }
+
+        await refreshAdminData();
+        showToast("Synced successfully.", "success");
+    } catch (error) {
+        if (error?.code === "DB_OFFLINE" || error?.status === 503) {
+            setConnectionStatus("offline");
+            showToast(error.message || "Database is still offline.", "warning");
+            startRetryLoop();
+            return;
+        }
+
+        showToast(error.message || "Sync failed.", "error");
+    }
+}
+
+function startRetryLoop() {
+    if (state.retryTimer) {
+        return;
+    }
+
+    state.retryTimer = window.setInterval(async () => {
+        if (state.connectionStatus !== "offline") {
+            stopRetryLoop();
+            return;
+        }
+
+        try {
+            const dbOnline = await ensureDatabaseOnline();
+            if (!dbOnline) {
+                return;
+            }
+
+            await refreshAdminData();
+            showToast("Database connected. Synced.", "success");
+        } catch (error) {
+            // Keep waiting until DB comes back.
+        }
+    }, 8000);
+}
+
+function stopRetryLoop() {
+    if (state.retryTimer) {
+        clearInterval(state.retryTimer);
+        state.retryTimer = null;
+    }
+}
+
+function handleBackgroundRefreshError(error) {
+    if (error?.status === 401 || error?.status === 403) {
+        showToast(error.message || "Session expired. Please sign in again.", "error");
+        logout();
+        return;
+    }
+
+    if (error?.code === "DB_OFFLINE" || error?.status === 503) {
+        const wasLive = state.connectionStatus === "live";
+        setConnectionStatus("offline");
+
+        if (state.refreshTimer) {
+            clearInterval(state.refreshTimer);
+            state.refreshTimer = null;
+        }
+
+        if (wasLive) {
+            showToast(error.message || "Database went offline. Retrying...", "warning");
+        }
+
+        startRetryLoop();
+    }
 }
 
 function switchTab(tabId) {
@@ -521,22 +829,57 @@ function playNotificationSound() {
     refs.notifSound?.play().catch(() => {});
 }
 
-function setLiveStatus(isLive) {
+function setLiveStatus(status) {
     if (!refs.liveChip) return;
-    refs.liveChip.innerHTML = isLive ? `<i class="ri-radar-line"></i> Synced` : `<i class="ri-close-circle-line"></i> Signed out`;
+
+    refs.liveChip.classList.remove("is-offline", "is-signedout");
+
+    const normalized = typeof status === "string"
+        ? status
+        : (status ? "live" : "signed_out");
+
+    if (normalized === "offline") {
+        refs.liveChip.classList.add("is-offline");
+        refs.liveChip.innerHTML = `<i class="ri-cloud-off-line"></i> DB Offline`;
+        if (refs.overviewSyncStatus) {
+            refs.overviewSyncStatus.textContent = "Database offline";
+        }
+        return;
+    }
+
+    if (normalized === "signed_out") {
+        refs.liveChip.classList.add("is-signedout");
+        refs.liveChip.innerHTML = `<i class="ri-logout-circle-line"></i> Signed out`;
+        if (refs.overviewSyncStatus) {
+            refs.overviewSyncStatus.textContent = "Signed out";
+        }
+        return;
+    }
+
+    refs.liveChip.innerHTML = `<i class="ri-radar-line"></i> Synced`;
     if (refs.overviewSyncStatus) {
-        refs.overviewSyncStatus.textContent = isLive ? "Live data ready" : "Signed out";
+        refs.overviewSyncStatus.textContent = "Live data ready";
     }
 }
 
 function setStat(id, value) {
-    document.getElementById(id).textContent = formatNumber(value);
+    const element = document.getElementById(id);
+    if (!element) {
+        return;
+    }
+
+    if (typeof value === "string") {
+        element.textContent = value;
+        return;
+    }
+
+    element.textContent = formatNumber(value);
 }
 
 function setTokenStat(id, value) {
     const element = document.getElementById(id);
     if (element) {
-        element.textContent = formatToken(value);
+        element.textContent = typeof value === "string" ? value : formatToken(value);
     }
 }
 

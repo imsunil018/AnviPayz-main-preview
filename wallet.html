@@ -21,7 +21,7 @@
         <link
             href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
             rel="stylesheet">
-        <link rel="stylesheet" href="css/style.css">
+        <link rel="stylesheet" href="css/style.css?v=20260507-2">
 
         <link rel="icon" type="image/png" href="favicon.png">
 
@@ -35,10 +35,11 @@
                 border-radius: 0 0 24px 24px;
                 margin: -0.75rem -0.9rem 0;
                 background:
-                    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.2), transparent 40%),
-                    radial-gradient(circle at 86% 12%, rgba(34, 197, 94, 0.28), transparent 45%),
-                    linear-gradient(135deg, #1e2a6d 0%, #4f46e5 50%, #22c55e 130%);
-                box-shadow: 0 16px 32px rgba(15, 23, 42, 0.28);
+                    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.18), transparent 42%),
+                    radial-gradient(circle at 86% 12%, rgba(49, 196, 141, 0.26), transparent 46%),
+                    radial-gradient(circle at 62% 92%, rgba(124, 137, 255, 0.18), transparent 52%),
+                    linear-gradient(135deg, #162456 0%, #3f4bf0 52%, #22c55e 135%);
+                box-shadow: 0 18px 38px rgba(2, 6, 23, 0.42);
             }
 
             .wallet-hero-kicker {
@@ -56,8 +57,8 @@
             .wallet-hero-pill {
                 border-radius: 999px;
                 padding: 0.45rem 0.85rem;
-                background: rgba(15, 23, 42, 0.3);
-                border: 1px solid rgba(255, 255, 255, 0.24);
+                background: rgba(2, 6, 23, 0.22);
+                border: 1px solid rgba(255, 255, 255, 0.22);
                 backdrop-filter: blur(10px);
             }
 
@@ -70,9 +71,10 @@
                 min-height: auto;
                 padding: 0.85rem 0.8rem;
                 border-radius: 16px;
-                background: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(12, 19, 35, 0.86));
-                border: 1px solid rgba(148, 163, 184, 0.2);
-                box-shadow: 0 14px 26px rgba(15, 23, 42, 0.2);
+                background:
+                    linear-gradient(180deg, rgba(16, 26, 45, 0.86), rgba(9, 17, 31, 0.92));
+                border: 1px solid rgba(167, 183, 206, 0.18);
+                box-shadow: 0 18px 34px rgba(2, 6, 23, 0.32);
             }
 
             .wallet-stats-grid .stat-label {
@@ -86,41 +88,135 @@
             }
 
             .wallet-convert-card {
-                border-radius: 20px;
-                padding: 1rem;
-                background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.92));
-                border: 1px solid rgba(148, 163, 184, 0.18);
-                box-shadow: 0 18px 30px rgba(15, 23, 42, 0.24);
+                border-radius: 22px;
+                padding: 1.15rem;
+                position: relative;
+                overflow: hidden;
+                background:
+                    radial-gradient(circle at 14% 18%, rgba(245, 158, 11, 0.2), transparent 52%),
+                    radial-gradient(circle at 86% 14%, rgba(124, 137, 255, 0.18), transparent 56%),
+                    radial-gradient(circle at 72% 92%, rgba(49, 196, 141, 0.14), transparent 62%),
+                    linear-gradient(180deg, rgba(16, 26, 45, 0.92), rgba(9, 17, 31, 0.95));
+                border: 1px solid rgba(245, 158, 11, 0.22);
+                box-shadow: 0 26px 54px rgba(2, 6, 23, 0.38);
+            }
+
+            .wallet-convert-card::before {
+                content: "";
+                position: absolute;
+                inset: 1px;
+                border-radius: inherit;
+                background: linear-gradient(120deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04) 55%, rgba(255, 255, 255, 0.1));
+                opacity: 0.22;
+                pointer-events: none;
+            }
+
+            .wallet-convert-card::after {
+                content: "";
+                position: absolute;
+                inset: -55% -20% auto auto;
+                width: 340px;
+                height: 340px;
+                background:
+                    radial-gradient(circle, rgba(245, 158, 11, 0.22), transparent 62%),
+                    radial-gradient(circle, rgba(124, 137, 255, 0.14), transparent 68%);
+                opacity: 0.75;
+                pointer-events: none;
+            }
+
+            .wallet-convert-card > * {
+                position: relative;
+                z-index: 1;
+            }
+
+            .wallet-convert-card .feature-head {
+                margin-bottom: 1.05rem;
+            }
+
+            .wallet-convert-card .feature-icon {
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                box-shadow: 0 18px 30px rgba(2, 6, 23, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+            }
+
+            .wallet-convert-label {
+                display: block;
+                margin: 0.15rem 0 0.6rem;
+                font-weight: 800;
+                font-size: 0.86rem;
+                letter-spacing: 0.02em;
+                text-transform: uppercase;
+                color: rgba(226, 232, 240, 0.9);
             }
 
             .wallet-convert-card .form-input {
-                background: rgba(15, 23, 42, 0.55);
-                border-color: rgba(148, 163, 184, 0.24);
+                min-height: 3.45rem;
+                border-radius: 20px;
+                background: rgba(2, 6, 23, 0.26);
+                border-color: rgba(245, 158, 11, 0.2);
                 color: var(--text-main);
+                font-size: 1.05rem;
+                font-weight: 800;
             }
 
             .exchange-preview-row {
-                border-radius: 14px;
-                background: rgba(15, 23, 42, 0.55);
-                border-color: rgba(148, 163, 184, 0.2);
+                border-radius: 16px;
+                background: rgba(2, 6, 23, 0.22);
+                border: 1px solid rgba(167, 183, 206, 0.16);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            }
+
+            .exchange-preview-label {
+                font-weight: 800;
+                color: rgba(226, 232, 240, 0.78);
+            }
+
+            .exchange-preview-value {
+                display: inline-flex;
+                align-items: baseline;
+                gap: 0.35rem;
+                padding: 0.24rem 0.6rem;
+                border-radius: 999px;
+                font-variant-numeric: tabular-nums;
+                background: rgba(16, 185, 129, 0.12);
+                border: 1px solid rgba(16, 185, 129, 0.22);
+                color: rgba(16, 185, 129, 0.98);
+            }
+
+            .exchange-preview-value #token-output {
+                font-family: "Space Grotesk", "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+                font-weight: 900;
+                letter-spacing: 0.01em;
+            }
+
+            html[data-theme="dark"] .wallet-stats-grid .stat-value {
+                text-shadow: 0 10px 26px rgba(2, 6, 23, 0.35);
+            }
+
+            html[data-theme="dark"] .wallet-convert-card .form-input:focus {
+                border-color: rgba(245, 158, 11, 0.62);
+                box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
             }
 
             .wallet-convert-btn {
-                border-radius: 16px !important;
-                min-height: 3.1rem;
+                border-radius: 20px !important;
+                min-height: 3.55rem;
+                font-size: 1.02rem;
+                box-shadow: 0 24px 44px rgba(245, 158, 11, 0.18);
             }
 
             #transaction-list {
-                background: #1e293b;
+                background: linear-gradient(180deg, rgba(16, 26, 45, 0.8), rgba(9, 17, 31, 0.9));
+                border: 1px solid rgba(167, 183, 206, 0.16);
                 border-radius: 18px;
                 padding: 0.85rem;
+                box-shadow: 0 18px 36px rgba(2, 6, 23, 0.3);
             }
 
             #transaction-list .history-row {
                 padding: 0.75rem 0.85rem;
                 border-radius: 14px;
-                border: 1px solid rgba(148, 163, 184, 0.16);
-                background: rgba(15, 23, 42, 0.5);
+                border: 1px solid rgba(167, 183, 206, 0.16);
+                background: rgba(2, 6, 23, 0.22);
             }
 
             #transaction-list .history-row + .history-row {
@@ -140,8 +236,8 @@
 
             html[data-theme="light"] .wallet-header-bg {
                 background:
-                    radial-gradient(circle at 16% 18%, rgba(255, 255, 255, 0.78), transparent 45%),
-                    radial-gradient(circle at 86% 12%, rgba(34, 197, 94, 0.22), transparent 45%),
+                    radial-gradient(circle at 16% 18%, rgb(3, 1, 36), transparent 45%),
+                    radial-gradient(circle at 86% 12%, rgba(35, 196, 94, 0.22), transparent 45%),
                     linear-gradient(135deg, #3555d1 0%, #5d7cff 52%, #22c55e 130%);
                 box-shadow: 0 20px 40px rgba(56, 86, 216, 0.18);
             }
@@ -159,9 +255,13 @@
             }
 
             html[data-theme="light"] .wallet-convert-card {
-                background: linear-gradient(180deg, rgba(244, 248, 255, 0.98), rgba(232, 238, 251, 0.98));
+                background:
+                    radial-gradient(circle at 14% 18%, rgba(245, 158, 11, 0.12), transparent 56%),
+                    radial-gradient(circle at 86% 14%, rgba(79, 70, 229, 0.14), transparent 58%),
+                    radial-gradient(circle at 72% 92%, rgba(16, 185, 129, 0.1), transparent 64%),
+                    linear-gradient(180deg, rgba(244, 248, 255, 0.98), rgba(232, 238, 251, 0.98));
                 border-color: rgba(79, 70, 229, 0.16);
-                box-shadow: 0 18px 30px rgba(79, 70, 229, 0.08);
+                box-shadow: 0 18px 34px rgba(79, 70, 229, 0.1);
             }
 
             html[data-theme="light"] .wallet-convert-card .form-input {
@@ -172,7 +272,20 @@
 
             html[data-theme="light"] .exchange-preview-row {
                 background: rgba(242, 246, 255, 0.95);
-                border-color: rgba(79, 70, 229, 0.16);
+                border: 1px solid rgba(79, 70, 229, 0.16);
+            }
+
+            html[data-theme="light"] .exchange-preview-label {
+                color: rgba(15, 23, 42, 0.7);
+            }
+
+            html[data-theme="light"] .exchange-preview-value {
+                background: rgba(16, 185, 129, 0.12);
+                border-color: rgba(16, 185, 129, 0.18);
+            }
+
+            html[data-theme="light"] .wallet-convert-label {
+                color: rgba(67, 56, 202, 0.86);
             }
 
             html[data-theme="light"] #transaction-list {
@@ -216,6 +329,36 @@
 
                 .wallet-stats-grid .stat-card {
                     padding: 0.8rem 0.7rem;
+                }
+
+                .wallet-convert-card {
+                    border-radius: 24px;
+                    padding: 1.05rem;
+                }
+
+                .wallet-convert-card .feature-head {
+                    gap: 0.85rem;
+                    margin-bottom: 0.95rem;
+                }
+
+                .wallet-convert-card .feature-icon {
+                    width: 3.1rem;
+                    height: 3.1rem;
+                    border-radius: 18px;
+                }
+
+                .wallet-convert-label {
+                    font-size: 0.82rem;
+                    margin-bottom: 0.55rem;
+                }
+
+                .exchange-preview-row {
+                    padding: 0.92rem 0.95rem;
+                }
+
+                .wallet-convert-btn {
+                    min-height: 3.8rem;
+                    font-size: 1.05rem;
                 }
             }
         </style>
@@ -364,14 +507,11 @@
                     </div>
 
                     <div class="form-group">
-                        <label
-                            style="display:block; margin-bottom:8px; font-weight:500; font-size:0.9rem;">Enter
-                            Points to
-                            Convert</label>
+                        <label class="wallet-convert-label">Enter Points to Convert</label>
                         <input type="number" id="points-input"
-                            class="form-input" placeholder="Enter points"
+                            class="form-input wallet-convert-input" placeholder="Enter points"
                             min="1" step="1"
-                            style="font-size: 1.1rem; font-weight: 600;">
+                            inputmode="numeric" autocomplete="off">
                     </div>
 
                     <div class="exchange-preview-row">
@@ -407,13 +547,13 @@
                     </div>
                 </div>
                 <footer class="app-footer">
-                    <a href="privacy.html" target="_blank">Privacy Policy</a>
+                    <a href="privacy.html">Privacy Policy</a>
                     <span>&bull;</span>
-                    <a href="terms.html" target="_blank">Terms & Conditions</a>
+                    <a href="terms.html">Terms & Conditions</a>
                     <span>&bull;</span>
-                    <a href="refund.html" target="_blank">Refund Policy</a>
+                    <a href="refund.html">Refund Policy</a>
                     <span>&bull;</span>
-                    <a href="disclaimer.html" target="_blank">Disclaimer</a>
+                    <a href="disclaimer.html">Disclaimer</a>
                 </footer>
             </main>
 
@@ -436,7 +576,7 @@
 
         <script src="config.js"></script>
 
-        <script type="module" src="js/auth.js?v=20260330"></script>
+        <script defer src="js/auth.js?v=20260511-1"></script>
     </body>
 
 </html>

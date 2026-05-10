@@ -13,6 +13,7 @@ const User = require('./server/models/User');
 const Task = require('./server/models/Task');
 const AdminEvent = require('./server/models/AdminEvent');
 const Notification = require('./server/models/Notification');
+const NotificationRead = require('./server/models/NotificationRead');
 const {
     getDeletionMetadata,
     isPendingDeletion,
@@ -120,11 +121,39 @@ app.use(async (req, res, next) => {
 connectDB();
 
 app.get('/api/test', (req, res) => {
+    const dbStatus = global.__ANVI_DB_STATUS__ || null;
     res.json({
         message: 'Backend is running!',
         status: 'OK',
-        database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+        database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+        dbStatus
     });
+});
+
+// If MongoDB is offline/unreachable, fail fast so the frontend doesn't sit in "Loading...".
+app.use('/api', (req, res, next) => {
+    // Allow admin sign-in and basic health checks even when MongoDB is offline.
+    // The admin dashboard will still show a "DB offline" state for data-driven routes.
+    const normalizedPath = String(req.path || "").replace(/\/+$/, "") || "/";
+    const bypassDbGuard =
+        normalizedPath === '/test' ||
+        normalizedPath === '/admin/login' ||
+        normalizedPath === '/admin/auth/login';
+
+    if (bypassDbGuard) {
+        next();
+        return;
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+        return res.status(503).json({
+            message: 'Database unavailable. Start MongoDB (or verify MONGO_URI / Atlas IP whitelist) and try again.',
+            code: 'DB_OFFLINE',
+            hint: 'If using MongoDB Atlas, add your current IP in Network Access (or allow 0.0.0.0/0 for dev).'
+        });
+    }
+
+    next();
 });
 
 app.use('/api', authRoutes);
@@ -189,7 +218,7 @@ const STATIC_REWARD_RULES = Object.freeze({
     }
 });
 const SPIN_REWARDS = Object.freeze([5, 10, 15, 20, 25, 40, 60, 100]);
-const NOTIFICATION_RETENTION_DAYS = 10;
+const NOTIFICATION_RETENTION_DAYS = 30;
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '').trim();
 const REWARD_TOKEN_TTL = '5m';
@@ -198,8 +227,9 @@ const MIN_CONVERTIBLE_POINTS_STEP = 10;
 
 // Referral Bonus Constants
 const REFER_POINTS_PER_USER = 250;           // 250 points per successful referral
-const REFER_BONUS_MILESTONE = 10;             // Bonus milestone at 10 referrals
-const REFER_BONUS_POINTS = 1000;              // 1000 bonus points at 10 referrals
+const REFER_NEW_USER_POINTS = 150;            // 150 points for the new user (on signup via referral code)
+const REFER_BONUS_MILESTONE = 15;             // Bonus milestone every 15 referrals
+const REFER_BONUS_POINTS = 1000;              // 1000 points per milestone
 const REFER_DAILY_LIMIT = 10;                 // Max 10 referrals per day
 
 let taskCatalogPromise = null;
@@ -677,14 +707,8 @@ function maskEmail(email) {
     }
 
     const visibleStart = local.slice(0, Math.min(6, local.length));
-    const visibleEnd = local.length > 1 ? local.slice(-1) : '';
-    const dots = '.....';
-
-    if (local.length <= 2) {
-        return `${local.charAt(0) || '*'}${dots}@${domain}`;
-    }
-
-    return `${visibleStart}${dots}${visibleEnd}@${domain}`;
+    const prefix = visibleStart || '*';
+    return `${prefix}****@${domain}`;
 }
 
 async function buildReferralPayload(user) {
@@ -693,7 +717,7 @@ async function buildReferralPayload(user) {
         .select('name email joinedAt');
 
     // Calculate global leaderboard (Top 10 referrers) with bonus
-    const allUsers = await User.find({}).select('name referralCode referralEarnings');
+    const allUsers = await User.find({}).select('name email referralCode referralEarnings');
     const referralCounts = buildReferralCountMap(await User.find({}));
     const weekStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const weeklyReferredUsers = await User.find({
@@ -702,13 +726,7 @@ async function buildReferralPayload(user) {
     }).select('referredByCode');
     const weeklyReferralCounts = buildReferralCountMap(weeklyReferredUsers);
 
-    // Calculate bonus points
-    const calculateBonusPoints = (referralCount) => {
-        if (referralCount >= REFER_BONUS_MILESTONE) {
-            return REFER_BONUS_POINTS;
-        }
-        return 0;
-    };
+    const calculateBonusPoints = (referralCount) => Math.floor(Math.max(Number(referralCount || 0), 0) / REFER_BONUS_MILESTONE) * REFER_BONUS_POINTS;
 
     const leaderboard = allUsers
         .map(u => {
@@ -718,13 +736,15 @@ async function buildReferralPayload(user) {
             return {
                 id: u._id,
                 username: u.name,
+                emailMasked: maskEmail(u.email),
                 referrals: refCount,
                 points: baseEarnings + bonusPoints,
                 bonus: bonusPoints,
                 isMe: String(u._id) === String(user._id)
             };
         })
-        .sort((a, b) => b.points - a.points)
+        .filter((entry) => entry.referrals > 0)
+        .sort((a, b) => (b.referrals - a.referrals) || (b.points - a.points))
         .slice(0, 10);
 
     const weeklyLeaderboard = allUsers
@@ -734,6 +754,7 @@ async function buildReferralPayload(user) {
             return {
                 id: u._id,
                 username: u.name,
+                emailMasked: maskEmail(u.email),
                 referrals: refCount,
                 points: baseEarnings,
                 bonus: 0,
@@ -741,20 +762,30 @@ async function buildReferralPayload(user) {
             };
         })
         .filter((entry) => entry.referrals > 0)
-        .sort((a, b) => b.points - a.points)
+        .sort((a, b) => (b.referrals - a.referrals) || (b.points - a.points))
         .slice(0, 10);
 
     const userRefCount = referralCounts.get(user.referralCode) || 0;
     const bonusPoints = calculateBonusPoints(userRefCount);
-    const totalPoints = (userRefCount * REFER_POINTS_PER_USER) + bonusPoints;
+    const computedEarnings = (userRefCount * REFER_POINTS_PER_USER) + bonusPoints;
+    const storedEarnings = Number(user.referralEarnings || 0);
+    const totalEarnings = storedEarnings > 0 ? storedEarnings : computedEarnings;
+    const bonusCycleProgress = userRefCount % REFER_BONUS_MILESTONE;
+    const bonusRemaining = bonusCycleProgress === 0 ? REFER_BONUS_MILESTONE : (REFER_BONUS_MILESTONE - bonusCycleProgress);
 
     return {
         user: serializeUser(user),
         referralCode: user.referralCode,
         totalReferrals: referredUsers.length,
-        totalEarnings: totalPoints,
+        totalEarnings,
+        referralPointsPerJoin: REFER_POINTS_PER_USER,
+        newUserSignupBonus: REFER_NEW_USER_POINTS,
+        bonusMilestone: REFER_BONUS_MILESTONE,
+        milestoneBonusPoints: REFER_BONUS_POINTS,
+        bonusCycleProgress,
+        bonusRemaining,
         bonusUnlocked: userRefCount >= REFER_BONUS_MILESTONE,
-        bonusPoints: bonusPoints,
+        bonusPoints,
         pendingRewards: 0,
         todayReferrals: referredUsers.filter((item) => indiaDateKey(item.joinedAt || Date.now()) === indiaDateKey()).length,
         dailyLimit: REFER_DAILY_LIMIT,
@@ -762,7 +793,7 @@ async function buildReferralPayload(user) {
         weeklyLeaderboard,
         network: referredUsers.map((item) => ({
             name: item.name,
-            email: maskEmail(item.email),
+            email: item.email,
             reward: REFER_POINTS_PER_USER,
             time: item.joinedAt
         }))
@@ -1164,7 +1195,7 @@ app.get('/api/me', async (req, res) => {
         
         const referralCounts = buildReferralCountMap(await User.find({}));
         const userRefCount = referralCounts.get(user.referralCode) || 0;
-        const bonusPoints = userRefCount >= REFER_BONUS_MILESTONE ? REFER_BONUS_POINTS : 0;
+        const bonusPoints = Math.floor(Math.max(Number(userRefCount || 0), 0) / REFER_BONUS_MILESTONE) * REFER_BONUS_POINTS;
         const totalPoints = (userRefCount * REFER_POINTS_PER_USER) + bonusPoints;
         
         res.json({
@@ -1225,13 +1256,92 @@ app.get('/api/notifications', async (req, res) => {
                 { audience: 'all' },
                 { userId: String(user._id) }
             ]
-        }).sort({ createdAt: -1 }).limit(60).lean();
+        }).sort({ createdAt: -1 }).limit(200).lean();
+
+        const notificationIds = notifications.map((item) => String(item._id || item.id || '')).filter(Boolean);
+        const readDocs = notificationIds.length
+            ? await NotificationRead.find({
+                userId: String(user._id),
+                notificationId: { $in: notificationIds }
+            }).select('notificationId').lean()
+            : [];
+        const readSet = new Set((readDocs || []).map((doc) => String(doc.notificationId || '')).filter(Boolean));
 
         res.json({
-            notifications: notifications.map(serializeNotification)
+            notifications: notifications.map((notification) => {
+                const payload = serializeNotification(notification);
+                payload.read = readSet.has(String(payload.id || ''));
+                return payload;
+            })
         });
     } catch (error) {
         sendRouteError(res, error, 'Notifications API error:');
+    }
+});
+
+app.post('/api/notifications/read', async (req, res) => {
+    try {
+        const user = await getAuthenticatedUser(req);
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const ids = []
+            .concat(body.ids || body.id || [])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+            .slice(0, 200);
+
+        if (!ids.length) {
+            return res.status(400).json({ success: false, message: 'Notification id is required' });
+        }
+
+        const userId = String(user._id);
+        const now = new Date();
+        const ops = ids.map((notificationId) => ({
+            updateOne: {
+                filter: { userId, notificationId },
+                update: { $set: { readAt: now } },
+                upsert: true
+            }
+        }));
+
+        await NotificationRead.bulkWrite(ops, { ordered: false });
+
+        res.json({ success: true });
+    } catch (error) {
+        sendRouteError(res, error, 'Notification read API error:');
+    }
+});
+
+app.post('/api/notifications/read-all', async (req, res) => {
+    try {
+        const user = await getAuthenticatedUser(req);
+        const notifications = await Notification.find({
+            createdAt: { $gte: notificationCutoffDate() },
+            $or: [
+                { audience: 'all' },
+                { userId: String(user._id) }
+            ]
+        }).sort({ createdAt: -1 }).limit(200).lean();
+
+        const ids = notifications.map((item) => String(item._id || item.id || '')).filter(Boolean);
+        if (!ids.length) {
+            return res.json({ success: true, count: 0 });
+        }
+
+        const userId = String(user._id);
+        const now = new Date();
+        const ops = ids.map((notificationId) => ({
+            updateOne: {
+                filter: { userId, notificationId },
+                update: { $set: { readAt: now } },
+                upsert: true
+            }
+        }));
+
+        await NotificationRead.bulkWrite(ops, { ordered: false });
+
+        res.json({ success: true, count: ids.length });
+    } catch (error) {
+        sendRouteError(res, error, 'Notification read-all API error:');
     }
 });
 

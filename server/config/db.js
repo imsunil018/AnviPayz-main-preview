@@ -1,12 +1,33 @@
 const mongoose = require('mongoose');
 
-const connectDB = async () => {
-    try {
-        const conn = await mongoose.connect(process.env.MONGO_URI, {
-            serverSelectionTimeoutMS: 10000,
-            family: 4
-        });
+function setDbStatus({ online, error }) {
+    global.__ANVI_DB_STATUS__ = {
+        online: Boolean(online),
+        at: new Date().toISOString(),
+        error: error ? String(error) : ''
+    };
+}
 
+const connectDB = async () => {
+    const uri = String(process.env.MONGO_URI || '').trim();
+    if (!uri) {
+        console.error('[Database] Connection Error: MONGO_URI is empty.');
+        process.env.DB_OFFLINE = '1';
+        setDbStatus({ online: false, error: 'MONGO_URI is empty.' });
+        return;
+    }
+
+    // Prevent API requests from hanging forever when MongoDB is unreachable.
+    mongoose.set('bufferCommands', false);
+
+    const options = {
+        serverSelectionTimeoutMS: 10000,
+        family: 4,
+        bufferCommands: false,
+        bufferTimeoutMS: 2000
+    };
+
+    const ensureUserIndexes = async (conn) => {
         const usersCollection = conn.connection.collection('users');
         const indexes = await usersCollection.indexes();
         const legacyPhoneIndex = indexes.find((index) => index.name === 'phone_1');
@@ -49,11 +70,40 @@ const connectDB = async () => {
                 }
             );
         }
+    };
 
+    const connectOnce = async () => {
+        const conn = await mongoose.connect(uri, options);
+        process.env.DB_OFFLINE = '0';
+        setDbStatus({ online: true, error: '' });
+        await ensureUserIndexes(conn);
         console.log(`[Database] MongoDB Connected: ${conn.connection.host}`);
+        return conn;
+    };
+
+    try {
+        await connectOnce();
     } catch (error) {
         console.error(`[Database] Connection Error: ${error.message}`);
-        process.exit(1);
+        process.env.DB_OFFLINE = '1';
+        setDbStatus({ online: false, error: error.message });
+
+        const retryDelayMs = 12_000;
+        console.warn(`[Database] Retrying connection every ${Math.round(retryDelayMs / 1000)}s...`);
+        setInterval(async () => {
+            if (mongoose.connection.readyState === 1) {
+                process.env.DB_OFFLINE = '0';
+                setDbStatus({ online: true, error: '' });
+                return;
+            }
+
+            try {
+                await connectOnce();
+            } catch (_) {
+                process.env.DB_OFFLINE = '1';
+                setDbStatus({ online: false, error: 'MongoDB connection retry failed.' });
+            }
+        }, retryDelayMs).unref?.();
     }
 };
 

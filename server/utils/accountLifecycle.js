@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const NotificationRead = require('../models/NotificationRead');
 
 const RECOVERY_WINDOW_DAYS = 7;
 const ACCOUNT_STATUS_ACTIVE = 'active';
@@ -44,6 +45,7 @@ async function purgeUserData(user) {
             ? mongoose.connection.collection('otps').deleteMany({ email: userEmail }).catch(() => null)
             : Promise.resolve(),
         Notification.deleteMany({ userId }).catch(() => null),
+        NotificationRead.deleteMany({ userId }).catch(() => null),
         User.deleteOne({ _id: user._id })
     ]);
 }

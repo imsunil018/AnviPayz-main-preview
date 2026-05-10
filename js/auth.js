@@ -14,7 +14,33 @@ function normalizeApiBase(value) {
         .replace(/\/api$/, "");
 }
 
-const API_BASE = normalizeApiBase(isLocalDev ? "http://localhost:5000" : "https://anvipayz-main-preview-production.up.railway.app");
+const API_BASE_FALLBACK_REMOTE = "https://anvipayz-main-preview-production.up.railway.app";
+const API_BASE_LOCAL = "http://localhost:5000";
+function pickInitialApiBase() {
+    try {
+        const forced = normalizeApiBase(localStorage.getItem("anvi-api-base"));
+        if (forced) {
+            return forced;
+        }
+    } catch (_) {
+        // ignore
+    }
+
+    if (!isLocalDev) {
+        return API_BASE_FALLBACK_REMOTE;
+    }
+
+    // Live Server / static hosts on 127.0.0.1 often don't run the backend on `:5000`.
+    // Default to remote to avoid a slow failing request on every page load.
+    const port = String(window.location.port || "");
+    if (window.location.protocol !== "file:" && port && port !== "5000") {
+        return API_BASE_FALLBACK_REMOTE;
+    }
+
+    return API_BASE_LOCAL;
+}
+
+let activeApiBase = normalizeApiBase(pickInitialApiBase());
 const API_PREFIX = "/api";
 
 const INDIA_TIME_ZONE = "Asia/Kolkata";
@@ -23,11 +49,25 @@ let appInitPromise = null;
 let deleteAccountFlowResolver = null;
 let deleteAccountFlowStep = 0;
 let accountRestoreContext = null;
+let lastNotificationsSyncAt = 0;
+let notificationReadMigrationDone = false;
+const DEBUG_LOGS = (() => {
+    try {
+        return localStorage.getItem("anvi-debug") === "1";
+    } catch (_) {
+        return false;
+    }
+})();
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
 
 const STORAGE_KEYS = {
     token: "anvi-token",
     user: "anvi-user",
     notifications: "anvi-local-notifications",
+    notificationReads: "anvi-notification-reads",
     activity: "anvi-local-activity",
     tasks: "anvi-local-task-state",
     watchState: "anvi-local-watch-state",
@@ -52,6 +92,8 @@ const DEFAULT_ADMIN_TASKS = [];
 const SPIN_REWARDS = [5, 10, 15, 20, 25, 40, 60, 100];
 const SECURITY_ACTIVITY_KEY = "anvi-last-activity";
 const INACTIVITY_LIMIT_MS = 7 * 24 * 60 * 60 * 1000;
+const NOTIFICATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const NOTIFICATION_MAX_STORED = 200;
 const DELETE_ACCOUNT_FLOW_STEPS = [
     {
         badge: "Step 1 of 3",
@@ -90,6 +132,7 @@ const state = {
     page: currentPage(),
     user: null, // Always fetch from API, not localStorage
     token: getStoredToken(),
+    notificationReads: readStore(STORAGE_KEYS.notificationReads, {}),
     notifications: normalizeNotifications(readStore(STORAGE_KEYS.notifications, [])),
     activity: normalizeActivity(readStore(STORAGE_KEYS.activity, [])),
     spinning: false,
@@ -123,11 +166,223 @@ const MOBILE_NAV_META = {
     "tasks.html": { href: "tasks.html", label: "Tasks", icon: "ri-task-line" },
     "recharge.html": { href: "recharge.html", label: "Recharge", icon: "ri-flashlight-fill" },
     "refer.html": { href: "refer.html", label: "Refer", icon: "ri-share-forward-line" },
-    "notifications.html": { href: "notifications.html", label: "Alerts", icon: "ri-notification-3-line" },
+    "notifications.html": { href: "notifications.html", label: "Notifications", icon: "ri-notification-3-line" },
     "profile.html": { href: "profile.html", label: "Profile", icon: "ri-user-line" },
     "support.html": { href: "support.html", label: "Support", icon: "ri-customer-service-2-line" },
-    "spin.html": { href: "spin.html", label: "Spin", icon: "ri-refresh-line" }
+    "spin.html": { href: "spin.html", label: "Spin", icon: "ri-refresh-line" },
+    "shortcuts.html": { href: "shortcuts.html", label: "Shortcuts", icon: "ri-grid-fill" }
 };
+
+const HOME_QUICK_ACTIONS_KEY = "anvi-home-quick-actions";
+
+const QUICK_ACTIONS_META = [
+    { id: "convert", label: "Convert", href: "wallet.html#convert-section", icon: "ri-exchange-funds-line", tone: "convert" },
+    { id: "refer", label: "Refer", href: "refer.html", icon: "ri-share-forward-line", tone: "refer" },
+    { id: "support", label: "Support", href: "support.html", icon: "ri-customer-service-2-line", tone: "support" },
+    { id: "leaderboard", label: "Leaderboard", href: "refer.html#leaderboard", icon: "ri-trophy-line", tone: "leaderboard" },
+    { id: "wallet", label: "Wallet", href: "wallet.html", icon: "ri-wallet-line", tone: "convert" },
+    { id: "tasks", label: "Tasks", href: "tasks.html", icon: "ri-task-line", tone: "alerts" },
+    { id: "recharge", label: "Recharge", href: "recharge.html", icon: "ri-flashlight-fill", tone: "convert" },
+    { id: "profile", label: "Profile", href: "profile.html", icon: "ri-user-line", tone: "support" },
+    { id: "privacy", label: "Privacy", href: "privacy.html", icon: "ri-shield-check-line", tone: "showall" },
+    { id: "terms", label: "Terms", href: "terms.html", icon: "ri-file-text-line", tone: "showall" },
+    { id: "refund", label: "Refund", href: "refund.html", icon: "ri-refund-2-line", tone: "showall" },
+    { id: "disclaimer", label: "Disclaimer", href: "disclaimer.html", icon: "ri-information-line", tone: "showall" },
+    { id: "legal", label: "Legal", href: "legal.html", icon: "ri-bank-card-line", tone: "showall" },
+    { id: "showall", label: "Notifications", href: "notifications.html", icon: "ri-notification-3-line", tone: "alerts" }
+];
+
+function defaultHomeQuickActions() {
+    return ["convert", "wallet", "refer", "support", "leaderboard", "showall"];
+}
+
+function loadHomeQuickActions() {
+    try {
+        const raw = localStorage.getItem(HOME_QUICK_ACTIONS_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        const ids = Array.isArray(parsed)
+            ? parsed
+                .map((id) => String(id || "").trim())
+                .filter(Boolean)
+                .map((id) => (id === "alerts" ? "showall" : id))
+            : [];
+        const available = new Set(QUICK_ACTIONS_META.map((item) => item.id));
+        let unique = Array.from(new Set(ids)).filter((id) => available.has(id));
+
+        return unique.length ? unique : defaultHomeQuickActions();
+    } catch (error) {
+        return defaultHomeQuickActions();
+    }
+}
+
+function saveHomeQuickActions(ids) {
+    const cleaned = (Array.isArray(ids) ? ids : [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean);
+    localStorage.setItem(HOME_QUICK_ACTIONS_KEY, JSON.stringify(cleaned));
+}
+
+function renderHomeQuickActions() {
+    const container = document.getElementById("home-quick-actions");
+    if (!container) {
+        return;
+    }
+
+    const ids = loadHomeQuickActions();
+    const metaMap = new Map(QUICK_ACTIONS_META.map((item) => [item.id, item]));
+    const records = ids.map((id) => metaMap.get(id)).filter(Boolean);
+
+    if (!records.length) {
+        return;
+    }
+
+    container.innerHTML = records.map((action) => `
+        <a class="mobile-quick-item" href="${escapeHtml(action.href)}" data-action-id="${escapeHtml(action.id)}">
+            <span class="mobile-quick-icon mobile-quick-icon--${escapeHtml(action.tone || "showall")}">
+                <i class="${escapeHtml(action.icon)}"></i>
+            </span>
+            <span>${escapeHtml(action.label)}</span>
+        </a>
+    `).join("");
+}
+
+function shortcutTileMarkup(action, { checked = false } = {}) {
+    return `
+        <div class="shortcut-tile" data-shortcut-id="${escapeHtml(action.id)}">
+            <a class="shortcut-open" href="${escapeHtml(action.href)}">
+                <span class="mobile-quick-icon mobile-quick-icon--${escapeHtml(action.tone || "showall")}">
+                    <i class="${escapeHtml(action.icon)}"></i>
+                </span>
+                <span class="shortcut-label">${escapeHtml(action.label)}</span>
+            </a>
+            <label class="shortcut-pin">
+                <input class="shortcut-pin-input" type="checkbox" ${checked ? "checked" : ""}>
+                <span class="shortcut-pin-ui">Pin</span>
+            </label>
+        </div>
+    `;
+}
+
+async function initShortcutsPage() {
+    const container = document.getElementById("shortcuts-list");
+    if (!container) {
+        return;
+    }
+
+    const saveBtn = document.getElementById("shortcuts-save-btn");
+    const editBtn = document.getElementById("shortcuts-edit-btn");
+    const shortcutsCard = container.closest(".shortcuts-card");
+    const current = loadHomeQuickActions();
+    let lastSaved = new Set(current);
+    let isEditing = false;
+
+    const actions = QUICK_ACTIONS_META
+        .filter((item) => item && item.id);
+
+    container.innerHTML = actions
+        .map((action) => shortcutTileMarkup(action, { checked: lastSaved.has(action.id) }))
+        .join("");
+
+    const maxShortcuts = 8;
+
+    function applySavedSelection() {
+        container.querySelectorAll(".shortcut-tile").forEach((tile) => {
+            const id = String(tile?.dataset?.shortcutId || "").trim();
+            const input = tile.querySelector(".shortcut-pin-input");
+            if (!(input instanceof HTMLInputElement)) {
+                return;
+            }
+            input.checked = Boolean(id && lastSaved.has(id));
+        });
+    }
+
+    function setEditing(nextEditing) {
+        isEditing = Boolean(nextEditing);
+
+        if (shortcutsCard) {
+            shortcutsCard.classList.toggle("is-editing", isEditing);
+        }
+
+        if (saveBtn) {
+            saveBtn.hidden = !isEditing;
+            saveBtn.disabled = !isEditing;
+        }
+
+        if (editBtn) {
+            editBtn.setAttribute("aria-pressed", isEditing ? "true" : "false");
+            editBtn.setAttribute("aria-label", isEditing ? "Exit edit mode" : "Edit shortcuts");
+            editBtn.title = isEditing ? "Exit edit mode" : "Edit shortcuts";
+            const icon = editBtn.querySelector("i");
+            if (icon) {
+                icon.className = isEditing ? "ri-close-line" : "ri-edit-2-line";
+            }
+
+            const label = editBtn.querySelector(".shortcuts-edit-label");
+            if (label) {
+                label.textContent = isEditing ? "Cancel" : "Edit";
+            }
+        }
+
+        container.querySelectorAll(".shortcut-pin-input").forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+                input.disabled = !isEditing;
+            }
+        });
+
+        if (!isEditing) {
+            applySavedSelection();
+        }
+    }
+
+    function computePinnedIds() {
+        const selected = [];
+        container.querySelectorAll(".shortcut-pin-input:checked").forEach((input) => {
+            const tile = input.closest(".shortcut-tile");
+            const id = String(tile?.dataset?.shortcutId || "").trim();
+            if (id) {
+                selected.push(id);
+            }
+        });
+
+        return selected.slice(0, maxShortcuts);
+    }
+
+    container.addEventListener("change", (event) => {
+        if (!isEditing) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || !target.classList.contains("shortcut-pin-input")) {
+            return;
+        }
+
+        const checkedCount = container.querySelectorAll(".shortcut-pin-input:checked").length;
+        if (checkedCount > maxShortcuts) {
+            target.checked = false;
+            showToast("You can pin up to 8 shortcuts.", "error");
+        }
+    });
+
+    editBtn?.addEventListener("click", () => {
+        setEditing(!isEditing);
+    });
+
+    setEditing(false);
+
+    saveBtn?.addEventListener("click", async () => {
+        if (!isEditing) {
+            return;
+        }
+
+        const ids = computePinnedIds();
+        saveHomeQuickActions(ids);
+        lastSaved = new Set(ids);
+        showToast("Home shortcuts updated.", "success");
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        window.location.replace("home.html");
+    });
+}
 
 const defaultTasks = [
     {
@@ -151,10 +406,11 @@ const defaultTasks = [
 ];
 
 document.addEventListener("DOMContentLoaded", () => {
-    // Debug: Show API config on load
-    console.log("🔧 API_BASE:", API_BASE);
-    console.log("🔧 Is Local Dev:", isLocalDev);
-    console.log("🔧 Location:", window.location.host);
+    if (DEBUG_LOGS) {
+        console.log("🔧 API_BASE:", activeApiBase);
+        console.log("🔧 Is Local Dev:", isLocalDev);
+        console.log("🔧 Location:", window.location.host);
+    }
 
     if (!appInitPromise) {
         appInitPromise = initApp().finally(() => {
@@ -172,6 +428,9 @@ async function initApp() {
     getSafeToken();
     bindActivityListeners();
     ensureUiShell();
+    state.notificationReads = pruneNotificationReads(readStore(STORAGE_KEYS.notificationReads, {}));
+    state.notifications = applyNotificationReadState(pruneNotifications(state.notifications));
+    persistNotifications(state.notifications);
     syncActiveNav();
     bindNetworkIndicators();
     bindThemeToggles();
@@ -198,6 +457,12 @@ async function initApp() {
     initShellInteractions();
     await hydrateUser();
     renderCommonUserState();
+
+    // Keep unread badge in sync across pages/sessions.
+    // (No-op on failure; local cache still works as fallback.)
+    if (state.page !== "notifications.html") {
+        fetchNotificationsPayload().catch(() => null);
+    }
 
     switch (state.page) {
         case "home.html":
@@ -227,14 +492,34 @@ async function initApp() {
         case "support.html":
             initSupportPage();
             break;
+        case "shortcuts.html":
+            await initShortcutsPage();
+            break;
         default:
             break;
     }
 }
 
 function currentPage() {
-    const raw = window.location.pathname.split("/").pop() || "index.html";
-    return raw.toLowerCase();
+    const path = String(window.location.pathname || "/");
+    const last = path.split("/").filter(Boolean).pop() || "";
+    const lower = last.toLowerCase();
+
+    // Vercel `cleanUrls: true` serves `home.html` at `/home` (no extension).
+    // Normalize extensionless routes back to the physical `.html` filenames that
+    // the app switch/case and navigation tables expect.
+    if (!lower || lower === "/") {
+        return "index.html";
+    }
+
+    if (!lower.includes(".")) {
+        // Prefer explicit page hints when available (HTML uses `body[data-page]`).
+        const hinted = String(document.body?.dataset?.page || "").trim().toLowerCase();
+        const name = hinted && !hinted.includes(".") ? hinted : lower;
+        return `${name}.html`;
+    }
+
+    return lower;
 }
 
 function ensureUiShell() {
@@ -342,6 +627,10 @@ function ensureUiShell() {
             if (event.key === "Escape" && !document.querySelector(".account-recovery-modal")?.hidden) {
                 hideAccountRecoveryModal();
             }
+
+            if (event.key === "Escape" && !document.querySelector(".logout-confirm-modal")?.hidden) {
+                hideLogoutConfirm();
+            }
         });
     }
 
@@ -389,9 +678,68 @@ function ensureUiShell() {
         });
     }
 
+    if (!document.querySelector(".logout-confirm-modal")) {
+        const modal = document.createElement("div");
+        modal.className = "logout-confirm-modal";
+        modal.hidden = true;
+        modal.innerHTML = `
+            <div class="logout-confirm-card" role="dialog" aria-modal="true" aria-labelledby="logout-confirm-title" aria-describedby="logout-confirm-message">
+                <button type="button" class="logout-confirm-close" id="logout-confirm-close" aria-label="Close logout dialog">
+                    <i class="ri-close-line"></i>
+                </button>
+                <div class="logout-confirm-icon" aria-hidden="true">
+                    <i class="ri-logout-box-r-line"></i>
+                </div>
+                <h3 id="logout-confirm-title">Logout?</h3>
+                <p id="logout-confirm-message">Are you sure you want to logout from this device?</p>
+                <div class="logout-confirm-actions">
+                    <button type="button" class="logout-confirm-secondary" id="logout-confirm-cancel">Cancel</button>
+                    <button type="button" class="btn-danger logout-confirm-primary" id="logout-confirm-confirm">Yes, Logout</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+                hideLogoutConfirm();
+            }
+        });
+
+        document.getElementById("logout-confirm-close")?.addEventListener("click", hideLogoutConfirm);
+        document.getElementById("logout-confirm-cancel")?.addEventListener("click", hideLogoutConfirm);
+        document.getElementById("logout-confirm-confirm")?.addEventListener("click", () => {
+            hideLogoutConfirm();
+            logout();
+        });
+    }
+
     ensureNavBadgeStyles();
     ensureSidebarUnreadBadge();
     updateSidebarUnreadBadge();
+}
+
+function showLogoutConfirm() {
+    const modal = document.querySelector(".logout-confirm-modal");
+    if (!modal) {
+        logout();
+        return;
+    }
+
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+
+    window.setTimeout(() => {
+        document.getElementById("logout-confirm-cancel")?.focus();
+    }, 10);
+}
+
+function hideLogoutConfirm() {
+    const modal = document.querySelector(".logout-confirm-modal");
+    if (modal) {
+        modal.hidden = true;
+    }
+    document.body.classList.remove("modal-open");
 }
 
 function ensureNavBadgeStyles() {
@@ -495,22 +843,43 @@ function initShellInteractions() {
     const sidebar = document.querySelector(".sidebar");
     const menuButton = document.getElementById("menu-btn");
 
+    const closeSidebar = () => {
+        sidebar?.classList.remove("open");
+        overlay?.classList.remove("active");
+        document.body.classList.remove("drawer-open");
+    };
+
+    const ensureCloseButton = () => {
+        if (!sidebar) {
+            return null;
+        }
+        let closeBtn = sidebar.querySelector(".sidebar-close");
+        if (!closeBtn) {
+            closeBtn = document.createElement("button");
+            closeBtn.type = "button";
+            closeBtn.className = "sidebar-close";
+            closeBtn.setAttribute("aria-label", "Close menu");
+            closeBtn.innerHTML = '<i class="ri-close-line"></i>';
+            sidebar.prepend(closeBtn);
+        }
+        closeBtn.addEventListener("click", closeSidebar);
+        return closeBtn;
+    };
+
+    ensureCloseButton();
+
     menuButton?.addEventListener("click", () => {
         sidebar?.classList.toggle("open");
         overlay?.classList.toggle("active");
         document.body.classList.toggle("drawer-open", sidebar?.classList.contains("open"));
     });
 
-    overlay?.addEventListener("click", () => {
-        sidebar?.classList.remove("open");
-        overlay.classList.remove("active");
-        document.body.classList.remove("drawer-open");
-    });
+    overlay?.addEventListener("click", closeSidebar);
 
-    document.querySelectorAll(".nav-footer a[href='index.html']").forEach((anchor) => {
+    document.querySelectorAll(".logout-link, .nav-footer a[href='index.html']").forEach((anchor) => {
         anchor.addEventListener("click", (event) => {
             event.preventDefault();
-            logout();
+            showLogoutConfirm();
         });
     });
 }
@@ -518,8 +887,32 @@ function initShellInteractions() {
 function toggleTheme() {
     const currentTheme = document.documentElement.getAttribute("data-theme") || "dark";
     const nextTheme = currentTheme === "light" ? "dark" : "light";
+    if (typeof window.applyTheme === "function") {
+        window.applyTheme(nextTheme, { persist: true });
+        return;
+    }
+
     document.documentElement.setAttribute("data-theme", nextTheme);
-    localStorage.setItem("anvi-theme", nextTheme);
+    try {
+        localStorage.setItem("anvi-theme", nextTheme);
+    } catch (error) {
+        // ignore storage errors
+    }
+
+    const themeIcon = document.getElementById("theme-icon");
+    if (themeIcon) {
+        themeIcon.className = nextTheme === "dark" ? "ri-sun-line" : "ri-moon-line";
+    }
+
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) {
+        themeColorMeta.setAttribute("content", nextTheme === "dark" ? "#0f172a" : "#ffffff");
+    }
+
+    const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+    if (colorSchemeMeta) {
+        colorSchemeMeta.setAttribute("content", nextTheme === "dark" ? "dark light" : "light dark");
+    }
 }
 
 function initAuthPages() {
@@ -695,11 +1088,14 @@ function initAuthPages() {
         // Remove spaces and convert to uppercase
         const normalized = String(code || '').trim().toUpperCase();
 
-        // Check format: Should be 7-12 characters (e.g., BABUL1234)
-        if (!/^[A-Z0-9]{7,12}$/.test(normalized)) {
+        // Allowed formats:
+        // - New: ANVI + first letter + 3/4 digits (e.g., ANVIA1234)
+        // - Legacy: 4/5 digits + ANVI + 4/5 digits (e.g., 1234ANVI5678)
+        const isValid = /^[0-9]{4,5}ANVI[0-9]{4,5}$/.test(normalized) || /^ANVI[A-Z][0-9]{4}$/.test(normalized);
+        if (!isValid) {
             return {
                 valid: false,
-                error: "Invalid code format. Use format like: BABUL1234"
+                error: "Invalid code format. Use format like: ANVIA1234"
             };
         }
 
@@ -936,9 +1332,9 @@ async function verifyEmailToken(token) {
             auth: false
         });
 
-                if (data?.token) {
-                    storeAuthToken(data.token);
-                }
+        if (data?.token) {
+            storeAuthToken(data.token);
+        }
 
         state.user = normalizeUser(data?.user || data);
         persistUser(state.user);
@@ -964,6 +1360,11 @@ async function hydrateUser() {
         state.user = normalizeUser(data?.user || data);
         persistUser(state.user);
     } catch (error) {
+        if (error?.code === "DB_OFFLINE" || error?.status === 503) {
+            showToast("Server is temporarily unavailable. Please try again shortly.", "warning");
+            return;
+        }
+
         try {
             const fallback = await requestFirst([
                 { path: "/dashboard", method: "GET" },
@@ -996,6 +1397,18 @@ async function hydrateUser() {
     }
 }
 
+function updateHomeHeroPointsPreview(points) {
+    const tokensPreview = numberFrom(points, 0) / 1000;
+    setText("home-hero-token-inline", formatDecimal(tokensPreview));
+
+    const chip = document.getElementById("home-hero-chip");
+    if (chip) {
+        const safePoints = Math.max(0, Math.floor(numberFrom(points, 0)));
+        const progress = (safePoints % 1000) / 1000;
+        chip.style.setProperty("--home-token-progress", progress.toFixed(4));
+    }
+}
+
 function renderCommonUserState() {
     if (!state.user) {
         return;
@@ -1005,10 +1418,12 @@ function renderCommonUserState() {
     setAllText("mobile-token-count", formatDecimal(state.user.tokens));
     setAllText("wallet-token-count", formatDecimal(state.user.tokens));
     setText("home-hero-token-count", formatDecimal(state.user.tokens));
-    setText("home-hero-token-inline", formatDecimal(state.user.tokens));
     setText("user-name", firstName(state.user.name));
     setText("wallet-balance", formatNumber(state.user.points));
     setText("user-balance", formatNumber(state.user.points));
+    updateHomeHeroPointsPreview(state.user.points);
+    window.dispatchEvent(new CustomEvent("anvi:home-points-updated", { detail: { points: numberFrom(state.user.points, 0) } }));
+    renderLifetimeXp();
     setText("profile-title", state.user.name || "AnviPayz Member");
     setText("profile-subtitle", state.user.email || "Rewards account");
     setText("profile-name", state.user.name || "-");
@@ -1035,6 +1450,20 @@ function renderCommonUserState() {
 
 async function initHomePage() {
     showHomeUnreadBannerOnce();
+    renderHomeQuickActions();
+
+    // Paint something immediately (local cache) so the home screen doesn't feel blocked on network.
+    const compactHistory = window.matchMedia?.("(max-width: 520px)")?.matches;
+    const initialCount = compactHistory ? 4 : 7;
+    const stepCount = compactHistory ? 6 : 7;
+    const cachedHistory = [...state.activity].sort((a, b) => toTimestamp(b.time) - toTimestamp(a.time));
+    renderHistoryList(
+        document.getElementById("recent-history"),
+        cachedHistory,
+        "No recent wallet activity yet.",
+        { timeStyle: "relative", variant: "compact", initialCount, stepCount, buttonLabel: "Show More" }
+    );
+
     const dashboard = await fetchDashboardPayload();
     const stats = dashboard.stats;
 
@@ -1042,12 +1471,16 @@ async function initHomePage() {
     setText("task-income", formatNumber(stats.taskRewards || 0));
     setText("survey-income", formatNumber(stats.surveyEarnings || 0));
     setText("user-balance", formatNumber(stats.points));
+    updateHomeHeroPointsPreview(stats.points);
+    window.dispatchEvent(new CustomEvent("anvi:home-points-updated", { detail: { points: numberFrom(stats.points, 0), surveyEarnings: numberFrom(stats.surveyEarnings, 0) } }));
+    renderLifetimeXp();
 
-    const latestHistory = (dashboard.history || []).slice(0, 7);
+    const latestHistory = dashboard.history || [];
     renderHistoryList(
         document.getElementById("recent-history"),
         latestHistory,
-        "No recent wallet activity yet."
+        "No recent wallet activity yet.",
+        { timeStyle: "relative", variant: "compact", initialCount, stepCount, buttonLabel: "Show More" }
     );
 
     const [tasksResult, referralResult] = await Promise.allSettled([
@@ -1197,17 +1630,24 @@ function updateHomeSmartCard({ tasks = [], referral = null } = {}) {
 
     const title = document.getElementById("home-smart-title");
     const sub = document.getElementById("home-smart-sub");
+    const goal = document.getElementById("home-smart-goal");
+    const progressFill = document.getElementById("home-smart-progress-fill");
+    const progressLabel = document.getElementById("home-smart-progress-label");
     const icon = document.getElementById("home-smart-icon");
 
-    const pendingTasks = getPendingTaskCount(tasks);
+    const mergedTasks = mergeHomeDailyTasks(Array.isArray(tasks) ? tasks : []);
+    const pendingTasks = getPendingTaskCount(mergedTasks);
+    const totalTasks = mergedTasks.length;
+    const completedTasks = totalTasks - pendingTasks;
+    const taskProgress = totalTasks > 0 ? clamp(Math.round((completedTasks / totalTasks) * 100), 0, 100) : (pendingTasks === 0 ? 100 : 0);
     const referralDelta = getHomeReferralDelta(referral);
 
     let tone = "tasks";
     let iconClass = "ri-flashlight-line";
-    let titleText = "New tasks are live";
-    let subText = pendingTasks > 0
-        ? `${formatNumber(pendingTasks)} tasks ready. Tap to start earning.`
-        : "Tap to view your available tasks.";
+    let titleText = "Daily Goal";
+    let subText = "Complete activities and earn bonus XP.";
+    let goalText = "Keep your streak alive to claim rewards.";
+    let progressText = `${formatNumber(completedTasks)} / ${formatNumber(totalTasks)} tasks completed`;
     let href = "tasks.html";
 
     if (referralDelta.newCount > 0) {
@@ -1217,12 +1657,20 @@ function updateHomeSmartCard({ tasks = [], referral = null } = {}) {
         subText = referralDelta.newCount > 1
             ? `${formatNumber(referralDelta.newCount)} friends joined using your code.`
             : `${referralDelta.latestName} joined using your code.`;
+        goalText = "Check your referral rewards now.";
+        progressText = "Referral progress updated.";
         href = "refer.html";
-    } else if (pendingTasks === 0) {
-        tone = "neutral";
-        iconClass = "ri-notification-2-line";
-        titleText = "No new updates right now";
-        subText = "Check tasks or invite friends to earn more.";
+    } else if (pendingTasks > 0) {
+        const bonusText = pendingTasks === 1 ? "+50 bonus" : `+50 bonus`;
+        titleText = "Daily Goal";
+        subText = `Complete ${formatNumber(pendingTasks)} more ${pendingTasks === 1 ? "task" : "tasks"} for ${bonusText}.`;
+        goalText = `Finish ${formatNumber(pendingTasks)} more to unlock extra XP.`;
+        href = "tasks.html";
+    } else {
+        titleText = "Daily Goal";
+        subText = "You're all caught up. Keep your streak alive for bonus XP.";
+        goalText = "Maintain your momentum to stay on track.";
+        progressText = "All tasks completed for today.";
         href = "tasks.html";
     }
 
@@ -1233,6 +1681,15 @@ function updateHomeSmartCard({ tasks = [], referral = null } = {}) {
     }
     if (sub) {
         sub.textContent = subText;
+    }
+    if (goal) {
+        goal.textContent = goalText;
+    }
+    if (progressFill) {
+        progressFill.style.width = `${taskProgress}%`;
+    }
+    if (progressLabel) {
+        progressLabel.textContent = progressText;
     }
     if (icon) {
         icon.innerHTML = `<i class="${iconClass}"></i>`;
@@ -1245,6 +1702,37 @@ function getPendingTaskCount(tasks) {
     }
 
     return tasks.filter((task) => !(task.completed || isTaskCompleted(task.id))).length;
+}
+
+function mergeHomeDailyTasks(tasks) {
+    const list = Array.isArray(tasks) ? [...tasks] : [];
+
+    const ensure = (id, title) => {
+        const cleanId = String(id || "").trim();
+        if (!cleanId) {
+            return;
+        }
+
+        const exists = list.some((task) => String(task?.id || "").trim() === cleanId);
+        if (exists) {
+            return;
+        }
+
+        list.push({
+            id: cleanId,
+            title: title || "Task",
+            description: "",
+            rewardPoints: 0,
+            taskType: "daily",
+            completed: isTaskCompleted(cleanId),
+            link: ""
+        });
+    };
+
+    ensure("daily-checkin", "Daily Check-in");
+    ensure("watch-tutorial", "Watch Tutorial");
+
+    return list;
 }
 
 function getHomeReferralDelta(referralData) {
@@ -1274,11 +1762,32 @@ async function initTasksPage() {
     const taskStats = buildTaskStats();
     setText("task-total-earned", formatNumber(taskStats.earnedPoints));
     setText("task-completed-count", formatNumber(taskStats.completedCount));
+    setText("task-streak-count", formatStreakDays(computeTaskStreakDays("daily-checkin")));
 
     bindStaticTaskButtons();
+    bindTasksSectionTabs();
+    // Don't leave the Tasks page stuck in a loading state while the API is slow/offline.
+    renderTaskSections(DEFAULT_ADMIN_TASKS);
     const responseTasks = await fetchTasksPayload();
     renderTaskSections(responseTasks);
     renderTaskHistory();
+}
+
+function bindTasksSectionTabs() {
+    const tabs = Array.from(document.querySelectorAll(".tasks-app-tab"));
+    if (!tabs.length) {
+        return;
+    }
+
+    const syncActive = () => {
+        const hash = window.location.hash || "#section-daily";
+        tabs.forEach((tab) => {
+            tab.classList.toggle("is-active", tab.getAttribute("href") === hash);
+        });
+    };
+
+    window.addEventListener("hashchange", syncActive);
+    syncActive();
 }
 
 function bindStaticTaskButtons() {
@@ -1610,11 +2119,30 @@ async function submitSurvey() {
 }
 
 async function fetchTasksPayload() {
+    const withTimeout = async (promise, ms) => {
+        let timer = null;
+        try {
+            return await Promise.race([
+                promise,
+                new Promise((_, reject) => {
+                    timer = window.setTimeout(() => reject(new Error("timeout")), ms);
+                })
+            ]);
+        } finally {
+            if (timer) {
+                window.clearTimeout(timer);
+            }
+        }
+    };
+
     try {
-        const data = await requestFirst([
-            { path: "/tasks", method: "GET" },
-            { path: "/user/tasks", method: "GET" }
-        ], { auth: true });
+        const data = await withTimeout(
+            requestFirst([
+                { path: "/tasks", method: "GET" },
+                { path: "/user/tasks", method: "GET" }
+            ], { auth: true }),
+            12000
+        );
 
         return normalizeTaskList(data?.tasks || data || []);
     } catch (error) {
@@ -1640,25 +2168,30 @@ function renderTaskSections(tasks) {
     }
 
     adminContainer.innerHTML = tasks.map((task) => {
-        const done = Boolean(task.completed) || isTaskCompleted(task.id);
+        // Completion is tracked per-device/per-day in local task state (and optionally enforced server-side).
+        // Do not trust the API's `completed` field for UI, as it may represent admin status / global state.
+        const done = isTaskCompleted(task.id);
         const badgeClass = done ? "success" : "warning";
         const actionLabel = done ? "Completed" : "Complete";
+        const iconTone = done ? "success" : "warning";
+        const iconClass = done ? "ri-checkbox-circle-line" : "ri-flashlight-line";
+        const disabledAttr = done ? 'disabled aria-disabled="true" data-locked="true" data-locked-label="Completed"' : "";
 
         return `
             <div class="task-card" data-task-card="${escapeHtml(task.id)}">
                 <div class="task-card-head">
-                    <div class="list-icon"><i class="ri-flashlight-line"></i></div>
+                    <div class="list-icon task-icon task-icon--${iconTone}"><i class="${iconClass}"></i></div>
                     <div class="list-info">
-                        <div class="task-title">${escapeHtml(task.title)}</div>
-                        <div class="task-body">${escapeHtml(task.description || "Open the task and finish the required action.")}</div>
+                        <div class="list-title">${escapeHtml(task.title)}</div>
+                        <div class="list-sub">${escapeHtml(task.description || "Open the task and finish the required action.")}</div>
                     </div>
                 </div>
                 <div class="task-card-bottom">
                     <div class="task-card-badges">
-                        <span class="task-pill reward"><i class="ri-coin-line"></i>${formatNumber(task.rewardPoints)} Points</span>
+                        <span class="task-pill reward"><i class="ri-coin-line"></i>${formatNumber(task.rewardPoints)} Coins</span>
                         <span class="status-pill ${badgeClass}">${done ? "Done today" : capitalize(task.taskType || "task")}</span>
                     </div>
-                    <button type="button" class="btn-primary task-card-action" data-api-task="${escapeHtml(task.id)}">
+                    <button type="button" class="btn-primary task-card-action" data-api-task="${escapeHtml(task.id)}" ${disabledAttr}>
                         ${actionLabel}
                     </button>
                 </div>
@@ -1670,7 +2203,7 @@ function renderTaskSections(tasks) {
         button.addEventListener("click", async () => {
             const taskId = button.getAttribute("data-api-task") || "";
             const task = tasks.find((item) => item.id === taskId);
-            if (!task || isTaskCompleted(task.id) || task.completed) {
+            if (!task || isTaskCompleted(task.id)) {
                 showToast("This task is already completed.", "warning");
                 return;
             }
@@ -1729,6 +2262,7 @@ function renderTaskHistory() {
     const stats = buildTaskStats();
     setText("task-total-earned", formatNumber(stats.earnedPoints));
     setText("task-completed-count", formatNumber(stats.completedCount));
+    setText("task-streak-count", formatStreakDays(computeTaskStreakDays("daily-checkin")));
 }
 
 async function initWalletPage() {
@@ -1874,7 +2408,11 @@ function bindWalletConversion() {
 
 async function initReferPage() {
     const data = await fetchReferralPayload();
-    const referralCode = data.referralCode || state.user?.referralCode || "ANVI0000";
+    const referralCode = String(data.referralCode || state.user?.referralCode || "").trim().toUpperCase();
+    if (!referralCode) {
+        showToast("Referral code is still loading. Please try again in a moment.", "warning");
+        return;
+    }
     const shareUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, "/")}index.html?view=register&ref=${encodeURIComponent(referralCode)}`;
 
     setText("my-refer-code", referralCode);
@@ -1921,6 +2459,16 @@ async function initReferPage() {
             showToast("Share is not available right now.", "error");
         }
     });
+
+    const whatsappBtn = document.getElementById("whatsapp-btn");
+    if (whatsappBtn && whatsappBtn.dataset.bound !== "true") {
+        whatsappBtn.dataset.bound = "true";
+        whatsappBtn.addEventListener("click", () => {
+            const text = `Join AnviPayz using my referral code ${String(referralCode || "").trim().toUpperCase()} and earn bonus points! ${shareUrl}`;
+            const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+            window.open(waUrl, "_blank", "noopener,noreferrer");
+        });
+    }
 
     renderReferralNetwork(data.network);
     handleReferralAlerts(data);
@@ -2144,7 +2692,7 @@ async function fetchReferralPayload() {
         };
     } catch (error) {
         return {
-            referralCode: state.user?.referralCode || "ANVI0000",
+            referralCode: state.user?.referralCode || "",
             totalReferrals: numberFrom(state.user?.referrals, 0),
             totalEarnings: numberFrom(state.user?.referralEarnings, 0),
             todayReferrals: 0,
@@ -2196,13 +2744,56 @@ async function initNotificationsPage() {
             state.notifications = updatedNotifications;
             persistNotifications();
             renderNotifications(updatedNotifications);
+            markAllNotificationsReadOnServer().catch(() => null);
             showToast("All notifications marked as read", "success");
         });
     }
 }
 
-async function fetchNotificationsPayload() {
+async function markNotificationsReadOnServer(ids) {
+    const payloadIds = (Array.isArray(ids) ? ids : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .slice(0, 200);
+
+    if (!payloadIds.length) {
+        return true;
+    }
+
     try {
+        await requestJson("/notifications/read", {
+            method: "POST",
+            body: { ids: payloadIds },
+            auth: true
+        });
+        return true;
+    } catch (error) {
+        // Ignore: local read state still applies on this device.
+        return false;
+    }
+}
+
+async function markAllNotificationsReadOnServer() {
+    try {
+        await requestJson("/notifications/read-all", {
+            method: "POST",
+            body: {},
+            auth: true
+        });
+        return true;
+    } catch (error) {
+        // Ignore: local read state still applies on this device.
+        return false;
+    }
+}
+
+async function fetchNotificationsPayload({ force = false } = {}) {
+    try {
+        const now = Date.now();
+        if (!force && state.page !== "notifications.html" && (now - lastNotificationsSyncAt) < 60 * 1000) {
+            return state.notifications;
+        }
+
         const data = await requestFirst([
             { path: "/notifications", method: "GET" },
             { path: "/user/notifications", method: "GET" }
@@ -2211,6 +2802,34 @@ async function fetchNotificationsPayload() {
         const normalized = normalizeNotifications(data?.notifications || data || []);
         state.notifications = mergeNotifications(normalized, state.notifications);
         persistNotifications();
+
+        if (state.page === "home.html") {
+            window.dispatchEvent(new Event("anvi:notifications-updated"));
+        }
+
+        if (!notificationReadMigrationDone) {
+            // Avoid spamming older backends with read-sync calls that may not exist (404).
+            // Local read state still works on-device, and we sync reads explicitly from the
+            // notifications page actions.
+            if (state.page !== "notifications.html") {
+                notificationReadMigrationDone = true;
+                lastNotificationsSyncAt = Date.now();
+                return state.notifications;
+            }
+
+            const idsToSync = state.notifications
+                .filter((item) => item && item.unread === false && item.id)
+                .map((item) => item.id);
+            markNotificationsReadOnServer(idsToSync)
+                .then((synced) => {
+                    if (synced) {
+                        notificationReadMigrationDone = true;
+                    }
+                })
+                .catch(() => null);
+        }
+
+        lastNotificationsSyncAt = Date.now();
         return state.notifications;
     } catch (error) {
         return state.notifications;
@@ -2261,6 +2880,7 @@ function renderNotifications(list) {
                         state.notifications = list;
                         persistNotifications(list);
                         renderNotifications(list);
+                        markNotificationsReadOnServer([list[index].id]).catch(() => null);
                     }
                 });
             });
@@ -2281,11 +2901,20 @@ async function initSpinPage() {
     const button = document.getElementById("btn-spin");
     const message = document.getElementById("spin-msg");
     const alreadyUsed = isTaskCompleted("daily-spin");
+    let stopCooldown = () => { };
+
+    const startCooldown = () => {
+        stopCooldown();
+        stopCooldown = startSpinCooldownTimer({ message, button });
+    };
 
     if (alreadyUsed && message) {
-        message.textContent = "Today's spin is already used. Come back tomorrow.";
-        button.disabled = true;
-        button.textContent = "Spin used";
+        message.textContent = "Today's spin is already used.";
+        if (button) {
+            button.disabled = true;
+            button.textContent = "Spin used";
+        }
+        startCooldown();
     }
 
     button?.addEventListener("click", async () => {
@@ -2295,13 +2924,22 @@ async function initSpinPage() {
         }
 
         state.spinning = true;
+        const previousLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = "SPINNING...";
+
+        const container = document.querySelector(".wheel-container");
+        container?.classList.add("is-spinning");
+
+        const stopLoop = startWheelSpinLoop({ speedDegPerSec: 1080 });
+        const stopTick = startSpinTickSound(12000);
         playSpinSound();
 
         try {
             const reward = await fetchSpinReward();
+            stopLoop();
             const spins = 8 + Math.floor(Math.random() * 3);
             const spinDuration = getSpinDuration(spins);
-            const stopTick = startSpinTickSound(spinDuration);
             await animateWheelToReward(reward.index, { spins, duration: spinDuration });
             stopTick();
             await completeRewardFlow({
@@ -2313,19 +2951,22 @@ async function initSpinPage() {
                 requestVariants: reward.requestVariants
             });
 
-            if (message) {
-                message.textContent = `Today's spin rewarded ${reward.points} points.`;
-            }
+            startCooldown();
 
-            button.disabled = true;
             button.textContent = "Spin used";
         } catch (error) {
+            stopLoop();
+            stopTick();
             const friendly = error?.message || "Spin failed. Please try again.";
             showToast(friendly, "error");
             if (message) {
                 message.textContent = friendly;
             }
+
+            button.disabled = false;
+            button.textContent = previousLabel || "SPIN NOW";
         } finally {
+            container?.classList.remove("is-spinning");
             state.spinning = false;
         }
     });
@@ -2356,7 +2997,7 @@ function renderSpinWheel() {
 
     wheel.innerHTML = SPIN_REWARDS.map((reward, index) => {
         const angle = index * (360 / SPIN_REWARDS.length) + (360 / SPIN_REWARDS.length) / 2;
-        return `<span class="wheel-segment-label" style="--angle:${angle}; --distance:120px;">${reward}</span>`;
+        return `<span class="wheel-segment-label" data-index="${index}" style="--angle:${angle}; --distance:120px;">${reward}</span>`;
     }).join("");
 }
 
@@ -2396,22 +3037,154 @@ async function fetchSpinReward() {
 function animateWheelToReward(index, { spins = 7, duration = 4800 } = {}) {
     const wheel = document.getElementById("wheel");
     if (!wheel) {
-        return Promise.resolve();
+        return delay(duration);
     }
 
     const segmentAngle = 360 / SPIN_REWARDS.length;
-    const stopAngle = 360 - (index * segmentAngle + segmentAngle / 2);
-    state.wheelRotation += spins * 360 + stopAngle;
-    wheel.style.transition = `transform ${duration}ms cubic-bezier(0.12, 0.78, 0.14, 1)`;
-    wheel.style.transform = `rotate(${state.wheelRotation}deg)`;
+    const targetStopAngle = 360 - (index * segmentAngle + segmentAngle / 2);
+    const current = normalizeAngle(state.wheelRotation);
+    const deltaToTarget = (targetStopAngle - current + 360) % 360;
+    const fromRotation = state.wheelRotation;
+    state.wheelRotation += spins * 360 + deltaToTarget;
 
-    return new Promise((resolve) => {
-        window.setTimeout(resolve, duration + 80);
-    });
+    // Use rAF animation so the wheel still spins even if transitions are reduced/overridden.
+    wheel.style.transition = "none";
+    return animateRotation(wheel, {
+        from: fromRotation,
+        to: state.wheelRotation,
+        durationMs: duration,
+        easing: easeOutQuint
+    }).then(() => highlightSpinWinner(index));
 }
 
 function getSpinDuration(spins) {
     return Math.max(4200, spins * 520);
+}
+
+function startSpinCooldownTimer({ message, button }) {
+    if (!message) {
+        return () => { };
+    }
+
+    let intervalId = 0;
+
+    const update = () => {
+        const remainingMs = msUntilNextIstMidnight();
+        if (remainingMs <= 0) {
+            message.textContent = "Spin is available now.";
+            if (button && !state.spinning && !isTaskCompleted("daily-spin")) {
+                button.disabled = false;
+                button.textContent = "SPIN NOW";
+            }
+            if (intervalId) {
+                window.clearInterval(intervalId);
+                intervalId = 0;
+            }
+            return;
+        }
+
+        message.textContent = `Next spin in ${formatDurationClock(remainingMs)} (resets at 12:00 AM IST).`;
+    };
+
+    update();
+    intervalId = window.setInterval(update, 1000);
+
+    return () => {
+        if (intervalId) {
+            window.clearInterval(intervalId);
+            intervalId = 0;
+        }
+    };
+}
+
+function msUntilNextIstMidnight(nowMs = Date.now()) {
+    const istOffsetMs = 330 * 60 * 1000;
+    const istNow = new Date(nowMs + istOffsetMs);
+    const year = istNow.getUTCFullYear();
+    const month = istNow.getUTCMonth();
+    const day = istNow.getUTCDate();
+    const nextMidnightIstUtcMs = Date.UTC(year, month, day + 1, 0, 0, 0) - istOffsetMs;
+    return nextMidnightIstUtcMs - nowMs;
+}
+
+function formatDurationClock(ms) {
+    const totalSeconds = Math.max(0, Math.floor(numberFrom(ms, 0) / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const hh = String(hours).padStart(2, "0");
+    const mm = String(minutes).padStart(2, "0");
+    const ss = String(seconds).padStart(2, "0");
+    return `${hh}h ${mm}m ${ss}s`;
+}
+
+function startWheelSpinLoop({ speedDegPerSec = 960 } = {}) {
+    const wheel = document.getElementById("wheel");
+    if (!wheel) {
+        return () => { };
+    }
+
+    let active = true;
+    let last = performance.now();
+
+    const frame = (now) => {
+        if (!active) return;
+        const deltaSec = Math.min(0.05, Math.max(0, (now - last) / 1000));
+        last = now;
+        state.wheelRotation += speedDegPerSec * deltaSec;
+        wheel.style.transition = "none";
+        wheel.style.transform = `rotate(${state.wheelRotation}deg)`;
+        requestAnimationFrame(frame);
+    };
+
+    requestAnimationFrame(frame);
+    return () => {
+        active = false;
+    };
+}
+
+function highlightSpinWinner(index) {
+    const wheel = document.getElementById("wheel");
+    if (!wheel) return;
+
+    wheel.querySelectorAll(".wheel-segment-label").forEach((label) => {
+        label.classList.toggle("is-winner", Number(label.dataset.index) === Number(index));
+    });
+}
+
+function animateRotation(el, { from, to, durationMs = 1200, easing = (t) => t } = {}) {
+    const start = performance.now();
+
+    return new Promise((resolve) => {
+        const frame = (now) => {
+            const t = Math.min(1, Math.max(0, (now - start) / durationMs));
+            const eased = easing(t);
+            const value = from + (to - from) * eased;
+            el.style.transform = `rotate(${value}deg)`;
+
+            if (t >= 1) {
+                resolve();
+                return;
+            }
+            requestAnimationFrame(frame);
+        };
+
+        requestAnimationFrame(frame);
+    });
+}
+
+function easeOutQuint(t) {
+    return 1 - Math.pow(1 - t, 5);
+}
+
+function normalizeAngle(value) {
+    const v = Number(value) || 0;
+    return ((v % 360) + 360) % 360;
+}
+
+function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 async function initRechargePage() {
@@ -2836,12 +3609,14 @@ function renderPaginatedList({
 }
 
 function renderHistoryList(container, records, emptyMessage, options = {}) {
+    const timeStyle = options.timeStyle || "long";
+    const variant = options.variant || "default";
     renderPaginatedList({
         container,
         records,
         emptyMessage,
         emptyIcon: options.emptyIcon || "ri-history-line",
-        renderItem: historyMarkup,
+        renderItem: (entry) => historyMarkup(entry, { timeStyle, variant }),
         initialCount: numberFrom(options.initialCount, 10),
         stepCount: numberFrom(options.stepCount, 15),
         buttonLabel: options.buttonLabel || "Show All",
@@ -2849,20 +3624,67 @@ function renderHistoryList(container, records, emptyMessage, options = {}) {
     });
 }
 
-function historyMarkup(entry) {
+function historyIconForEntry(entry) {
+    const type = String(entry?.type || "").toLowerCase();
+    switch (type) {
+        case "spin":
+            return "ri-refresh-line";
+        case "task":
+            return "ri-task-line";
+        case "survey":
+            return "ri-file-list-3-line";
+        case "referral":
+            return "ri-user-add-line";
+        case "convert":
+            return "ri-exchange-funds-line";
+        case "recharge":
+            return "ri-smartphone-line";
+        default:
+            return "ri-history-line";
+    }
+}
+
+function historyMarkup(entry, options = {}) {
     const sign = entry.direction === "debit" ? "-" : "+";
     const amountClass = entry.direction === "debit" ? "warning" : "success";
+    const timeStyle = options.timeStyle === "relative" ? "relative" : "long";
+    const timeText = timeStyle === "relative" ? formatRelative(entry.time) : formatLongDate(entry.time);
+    const longTime = formatLongDate(entry.time);
+    const variant = options.variant || "default";
+
+    if (variant === "compact") {
+        const usesTokens = entry.type === "convert" || entry.type === "recharge";
+        const amountSuffix = usesTokens ? " Tokens" : " pts";
+        const amountText = `${sign}${formatDecimal(entry.amount)}${amountSuffix}`;
+        const title = escapeHtml(entry.title || "Activity");
+        const iconClass = historyIconForEntry(entry);
+
+        return `
+            <article class="history-row history-row--compact history-row--${escapeHtml(amountClass)}">
+                <div class="history-icon history-icon--${escapeHtml(amountClass)}" aria-hidden="true">
+                    <i class="${escapeHtml(iconClass)}"></i>
+                </div>
+                <div class="history-main">
+                    <div class="history-title">
+                        <span class="history-label">${title}</span>
+                        <span class="history-amount ${amountClass}">${escapeHtml(amountText)}</span>
+                    </div>
+                    <div class="history-time" title="${escapeHtml(longTime)}">${escapeHtml(timeText)}</div>
+                </div>
+            </article>
+        `;
+    }
 
     return `
         <article class="history-row">
             <div class="history-main">
                 <div class="history-title">${escapeHtml(entry.title)}</div>
                 <div class="history-body">${escapeHtml(entry.message || "Account activity update")}</div>
-                <div class="history-time">${escapeHtml(formatLongDate(entry.time))}</div>
+                <div class="history-time" title="${escapeHtml(longTime)}">${escapeHtml(timeText)}</div>
             </div>
-            <div style="text-align:right;">
+            <div class="history-side">
                 <div class="status-pill ${amountClass}">${sign}${formatDecimal(entry.amount)}${entry.type === "convert" || entry.type === "recharge" ? "" : " pts"}</div>
-                <div class="meta-text" style="margin-top:6px;">${escapeHtml(capitalize(entry.status || "completed"))}</div>
+                <div class="meta-text history-status">${escapeHtml(capitalize(entry.status || "completed"))}</div>
             </div>
         </article>
     `;
@@ -2876,12 +3698,115 @@ function buildTaskStats() {
     };
 }
 
+function formatStreakDays(value) {
+    const count = Math.max(0, Math.floor(numberFrom(value, 0)));
+    const unit = count === 1 ? "day" : "days";
+    return `${formatNumber(count)} ${unit}`;
+}
+
+function computeTaskStreakDays(taskId) {
+    const id = String(taskId || "").trim();
+    if (!id) {
+        return 0;
+    }
+
+    const dayFormatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: INDIA_TIME_ZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    });
+
+    const dayKeys = new Set(
+        state.activity
+            .filter((entry) => entry?.type === "task" && String(entry.taskId || "").trim() === id)
+            .map((entry) => {
+                const ts = toTimestamp(entry.time);
+                if (!ts) {
+                    return "";
+                }
+                return dayFormatter.format(new Date(ts));
+            })
+            .filter(Boolean)
+    );
+
+    let streak = 0;
+    const cursor = new Date();
+    while (true) {
+        const key = dayFormatter.format(cursor);
+        if (!dayKeys.has(key)) {
+            break;
+        }
+        streak += 1;
+        cursor.setDate(cursor.getDate() - 1);
+    }
+
+    return streak;
+}
+
 function buildSurveyStats() {
     const surveyEntries = state.activity.filter((entry) => entry.type === "survey");
     return {
         completedCount: surveyEntries.length,
         earnedPoints: surveyEntries.reduce((sum, item) => sum + numberFrom(item.amount, 0), 0)
     };
+}
+
+function computeLifetimeXp() {
+    return state.activity.reduce((sum, item) => {
+        const amount = numberFrom(item.amount, 0);
+        return sum + Math.max(0, amount);
+    }, 0);
+}
+
+function getXpThreshold(level) {
+    const thresholds = [0, 1000, 3000, 7000, 15000];
+    if (level <= thresholds.length) {
+        return thresholds[level - 1];
+    }
+
+    let threshold = thresholds[thresholds.length - 1];
+    let increment = 8000;
+    for (let nextLevel = thresholds.length + 1; nextLevel <= level; nextLevel += 1) {
+        increment = Math.round(increment * 1.9);
+        threshold += increment;
+    }
+    return threshold;
+}
+
+function getXpLevel(xp) {
+    let level = 1;
+    while (xp >= getXpThreshold(level + 1)) {
+        level += 1;
+    }
+
+    const currentThreshold = getXpThreshold(level);
+    const nextThreshold = getXpThreshold(level + 1);
+    const progress = clamp((xp - currentThreshold) / Math.max(1, nextThreshold - currentThreshold) * 100, 0, 100);
+
+    return {
+        xp,
+        level,
+        currentThreshold,
+        nextThreshold,
+        progress: Math.round(progress)
+    };
+}
+
+function renderLifetimeXp() {
+    const xp = computeLifetimeXp();
+    const { level, currentThreshold, nextThreshold, progress } = getXpLevel(xp);
+
+    window.__anviLifetimeXp = xp;
+    window.dispatchEvent(new CustomEvent("anvi:lifetime-xp-updated", {
+        detail: {
+            xp,
+            level,
+            currentThreshold,
+            nextThreshold,
+            progress
+        }
+    }));
 }
 
 function createWalletEntry(entry) {
@@ -2911,7 +3836,7 @@ function pushNotification(notification) {
         time: new Date().toISOString()
     });
 
-    state.notifications = [normalized, ...state.notifications].slice(0, 40);
+    state.notifications = mergeNotifications([normalized], state.notifications);
     persistNotifications();
 }
 
@@ -3114,9 +4039,9 @@ async function restoreScheduledAccount() {
             auth: false
         });
 
-                if (data?.token) {
-                    storeAuthToken(data.token);
-                }
+        if (data?.token) {
+            storeAuthToken(data.token);
+        }
 
         state.user = normalizeUser(data?.user || data);
         persistUser(state.user);
@@ -3138,41 +4063,32 @@ function playRewardSound() {
 }
 
 function playSpinSound() {
-    playToneSequence([
-        { frequency: 220, duration: 0.08 },
-        { frequency: 260, duration: 0.08 },
-        { frequency: 320, duration: 0.08 },
-        { frequency: 380, duration: 0.08 },
-        { frequency: 460, duration: 0.1 }
-    ]);
+    const context = getSharedAudioContext();
+    if (!context) {
+        return;
+    }
+
+    playSpinWhoosh(context, 0.55);
+    playToneGlide(context, {
+        from: 190,
+        to: 520,
+        duration: 0.42,
+        type: "sawtooth",
+        gain: 0.05
+    });
 }
 
 function startSpinTickSound(durationMs = 4800) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) {
-        return () => {};
+    const context = getSharedAudioContext();
+    if (!context) {
+        return () => { };
     }
 
-    const context = new AudioContextClass();
-    void context.resume().catch(() => {});
     let active = true;
 
     const playTick = () => {
         if (!active) return;
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        const now = context.currentTime;
-
-        oscillator.type = "square";
-        oscillator.frequency.value = 720;
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.exponentialRampToValueAtTime(0.06, now + 0.005);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
-
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start(now);
-        oscillator.stop(now + 0.055);
+        playNoiseTick(context);
     };
 
     const interval = window.setInterval(playTick, 90);
@@ -3180,7 +4096,6 @@ function startSpinTickSound(durationMs = 4800) {
         if (!active) return;
         active = false;
         window.clearInterval(interval);
-        void context.close().catch(() => {});
     };
 
     window.setTimeout(stop, durationMs + 200);
@@ -3188,13 +4103,10 @@ function startSpinTickSound(durationMs = 4800) {
 }
 
 function playToneSequence(steps) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) {
+    const context = getSharedAudioContext();
+    if (!context) {
         return;
     }
-
-    const context = new AudioContextClass();
-    void context.resume().catch(() => {});
     const now = context.currentTime;
 
     steps.forEach((step, index) => {
@@ -3214,10 +4126,102 @@ function playToneSequence(steps) {
         oscillator.start(start);
         oscillator.stop(start + step.duration + 0.02);
     });
+}
 
-    window.setTimeout(() => {
-        void context.close().catch(() => { });
-    }, 1200);
+let sharedAudioContext = null;
+
+function getSharedAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        return null;
+    }
+
+    if (!sharedAudioContext || sharedAudioContext.state === "closed") {
+        sharedAudioContext = new AudioContextClass();
+    }
+
+    void sharedAudioContext.resume().catch(() => { });
+    return sharedAudioContext;
+}
+
+function playSpinWhoosh(context, durationSec = 0.55) {
+    const buffer = createNoiseBuffer(context, durationSec);
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    const now = context.currentTime;
+
+    source.buffer = buffer;
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(320, now);
+    filter.frequency.exponentialRampToValueAtTime(1400, now + durationSec * 0.7);
+    filter.Q.setValueAtTime(0.9, now);
+    filter.Q.linearRampToValueAtTime(2.2, now + durationSec);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.085, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(context.destination);
+
+    source.start(now);
+    source.stop(now + durationSec + 0.02);
+}
+
+function playToneGlide(context, { from = 220, to = 520, duration = 0.35, type = "triangle", gain = 0.06 } = {}) {
+    const oscillator = context.createOscillator();
+    const envelope = context.createGain();
+    const now = context.currentTime;
+
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(from, now);
+    oscillator.frequency.exponentialRampToValueAtTime(to, now + duration);
+
+    envelope.gain.setValueAtTime(0.0001, now);
+    envelope.gain.exponentialRampToValueAtTime(gain, now + 0.015);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    oscillator.connect(envelope);
+    envelope.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + duration + 0.02);
+}
+
+function playNoiseTick(context) {
+    const durationSec = 0.03;
+    const buffer = createNoiseBuffer(context, durationSec);
+    const source = context.createBufferSource();
+    const highpass = context.createBiquadFilter();
+    const gain = context.createGain();
+    const now = context.currentTime;
+
+    source.buffer = buffer;
+    highpass.type = "highpass";
+    highpass.frequency.setValueAtTime(900, now);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.06, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);
+
+    source.connect(highpass);
+    highpass.connect(gain);
+    gain.connect(context.destination);
+    source.start(now);
+    source.stop(now + durationSec + 0.01);
+}
+
+function createNoiseBuffer(context, durationSec) {
+    const length = Math.max(1, Math.floor(context.sampleRate * durationSec));
+    const buffer = context.createBuffer(1, length, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) {
+        // Subtle decay to avoid harsh constant noise.
+        const decay = 1 - i / length;
+        data[i] = (Math.random() * 2 - 1) * decay;
+    }
+    return buffer;
 }
 
 async function withButtonState(button, busyLabel, callback) {
@@ -3268,13 +4272,35 @@ async function withButtonState(button, busyLabel, callback) {
 }
 
 async function requestFirst(variants, options = {}) {
-    // Simplified to only use the first variant to avoid 405/404 spamming
-    const v = variants[0];
-    return requestJson(v.path, {
-        method: v.method || "GET",
-        body: v.body,
-        auth: options.auth !== false
-    });
+    const records = Array.isArray(variants) ? variants : [];
+    const auth = options.auth !== false;
+
+    let lastError = null;
+
+    for (const variant of records) {
+        const path = String(variant?.path || "").trim();
+        if (!path) {
+            continue;
+        }
+
+        try {
+            return await requestJson(path, {
+                method: variant.method || "GET",
+                body: variant.body,
+                auth
+            });
+        } catch (error) {
+            lastError = error;
+
+            // Auth failures shouldn't fall through to other endpoints.
+            const status = Number(error?.status || error?.statusCode || 0);
+            if (status === 401 || status === 403) {
+                throw error;
+            }
+        }
+    }
+
+    throw lastError || new Error("Request failed.");
 }
 
 async function requestJson(path, { method = "GET", body, auth = true } = {}) {
@@ -3292,36 +4318,85 @@ async function requestJson(path, { method = "GET", body, auth = true } = {}) {
     }
 
     let response;
-    const url = `${API_BASE}${API_PREFIX}${path.startsWith("/") ? "" : "/"}${path}`;
+    const makeUrl = (base) => `${base}${API_PREFIX}${path.startsWith("/") ? "" : "/"}${path}`;
+    const url = makeUrl(activeApiBase);
     const requestKey = method === "GET" && body === undefined
         ? `${method}:${url}:${auth ? token : ""}`
         : "";
 
-    console.log(`🔗 API Call: ${method} ${url}`);
+    if (DEBUG_LOGS) {
+        console.log(`🔗 API Call: ${method} ${url}`);
+    }
 
     if (requestKey && inflightRequests.has(requestKey)) {
         return inflightRequests.get(requestKey);
     }
     const fetchPromise = (async () => {
+        let timer = null;
+        let controller = null;
+        const isLocalBase = /localhost|127\.0\.0\.1/i.test(activeApiBase);
+        const timeoutMs = isLocalBase ? 2500 : 12000;
+
         try {
+            controller = new AbortController();
+            timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
             response = await fetch(url, {
                 method,
                 headers,
-                body: body !== undefined ? JSON.stringify(body) : undefined
+                body: body !== undefined ? JSON.stringify(body) : undefined,
+                signal: controller.signal
             });
         } catch (networkError) {
             console.error("❌ FAILED TO FETCH:", url);
             console.error("❌ Error:", networkError.message);
-            console.error("💡 Make sure 'node server.js' is running on port 5050!");
-            throw new Error(`Server unreachable. Is backend running? (${networkError.message})`);
-        }
 
+            // If local backend is down/hanging, retry once on remote for this session.
+            if (isLocalDev && /localhost|127\.0\.0\.1/i.test(activeApiBase)) {
+                try {
+                    activeApiBase = normalizeApiBase(API_BASE_FALLBACK_REMOTE);
+                    const retryController = new AbortController();
+                    const retryTimer = window.setTimeout(() => retryController.abort(), 12000);
+                    response = await fetch(makeUrl(activeApiBase), {
+                        method,
+                        headers,
+                        body: body !== undefined ? JSON.stringify(body) : undefined,
+                        signal: retryController.signal
+                    });
+                    window.clearTimeout(retryTimer);
+                } catch (_) {
+                    // Ignore, fall through.
+                }
+            }
+
+            if (!response) {
+                if (networkError?.name === "AbortError") {
+                    throw new Error("Request timed out. Please try again.");
+                }
+                console.error("💡 Make sure the backend server is running and reachable.");
+                throw new Error("Server unreachable. Is backend running? (" + String(networkError?.message || "") + ")");
+            }
+        } finally {
+            if (timer) {
+                window.clearTimeout(timer);
+            }
+        }
         const contentType = response.headers.get("content-type") || "";
         const payload = contentType.includes("application/json")
             ? await response.json().catch(() => null)
             : await response.text().catch(() => "");
 
         if (!response.ok) {
+            // If local backend is unavailable, retry once on remote for this session.
+            if (response.status === 503 && isLocalDev && /localhost|127\.0\.0\.1/i.test(activeApiBase)) {
+                try {
+                    activeApiBase = normalizeApiBase(API_BASE_FALLBACK_REMOTE);
+                    return await requestJson(path, { method, body, auth });
+                } catch (_) {
+                    // Ignore, fall through to error handling below.
+                }
+            }
+
             const message = typeof payload === "object" && payload?.message
                 ? payload.message
                 : `Request failed with status ${response.status}.`;
@@ -3358,12 +4433,14 @@ function logout() {
     state.user = null;
     state.activity = [];
     state.notifications = [];
+    state.notificationReads = {};
     window.location.replace("index.html");
 }
 
 function redirectToLogin() {
     window.location.replace("index.html");
 }
+
 
 function readStore(key, fallback) {
     try {
@@ -3395,11 +4472,13 @@ function syncUserLocalCache(user) {
         const previous = localStorage.getItem(STORAGE_KEYS.activeUser) || "";
         if (previous && previous !== userKey) {
             localStorage.removeItem(STORAGE_KEYS.notifications);
+            localStorage.removeItem(STORAGE_KEYS.notificationReads);
             localStorage.removeItem(STORAGE_KEYS.activity);
             localStorage.removeItem(STORAGE_KEYS.tasks);
             localStorage.removeItem(STORAGE_KEYS.watchState);
             localStorage.removeItem(STORAGE_KEYS.referralSeenCount);
             state.notifications = [];
+            state.notificationReads = {};
             state.activity = [];
             updateSidebarUnreadBadge(0);
         }
@@ -3412,8 +4491,12 @@ function syncUserLocalCache(user) {
 
 function persistNotifications(list = state.notifications) {
     const normalized = normalizeNotifications(Array.isArray(list) ? list : []);
-    state.notifications = normalized;
-    localStorage.setItem(STORAGE_KEYS.notifications, JSON.stringify(state.notifications.slice(0, 40)));
+    const pruned = pruneNotifications(normalized);
+    const merged = applyNotificationReadState(pruned);
+    state.notificationReads = syncNotificationReadsFromList(pruneNotificationReads(state.notificationReads), merged);
+    state.notifications = merged;
+    localStorage.setItem(STORAGE_KEYS.notifications, JSON.stringify(state.notifications.slice(0, NOTIFICATION_MAX_STORED)));
+    localStorage.setItem(STORAGE_KEYS.notificationReads, JSON.stringify(state.notificationReads));
     updateSidebarUnreadBadge();
 }
 
@@ -3451,6 +4534,8 @@ function normalizeUser(user) {
 
     const existingReferralCode = state.user?.referralCode || "";
 
+    const referralCode = String(user.referralCode || user.refCode || user.myReferCode || existingReferralCode || "").trim().toUpperCase();
+
     return {
         id: user.id || user._id || "",
         name: user.name || user.fullName || user.userName || "AnviPayz User",
@@ -3463,7 +4548,7 @@ function normalizeUser(user) {
         taskEarnings: numberFrom(user.taskEarnings, user.taskRewards, user.taskIncome, 0),
         surveyEarnings: numberFrom(user.surveyEarnings, user.surveyIncome, 0),
         joinedAt: user.joinedAt || user.createdAt || user.registeredAt || new Date().toISOString(),
-        referralCode: user.referralCode || user.refCode || user.myReferCode || existingReferralCode,
+        referralCode,
         accountStatus: user.accountStatus || "active",
         deletionRequestedAt: user.deletionRequestedAt || null,
         deleteAfter: user.deleteAfter || null,
@@ -3478,7 +4563,7 @@ function normalizeTaskList(tasks) {
         description: task.description || task.desc || "",
         rewardPoints: numberFrom(task.rewardPoints, task.points, task.reward, 0),
         taskType: task.taskType || task.type || "task",
-        completed: Boolean(task.completed),
+        completed: boolFrom(task.completed),
         link: task.link || task.url || ""
     }));
 }
@@ -3487,10 +4572,35 @@ function normalizeNotifications(list) {
     return (Array.isArray(list) ? list : []).map(normalizeNotificationItem);
 }
 
+function hashString32(value) {
+    const raw = String(value || "");
+    let hash = 2166136261;
+    for (let i = 0; i < raw.length; i += 1) {
+        hash ^= raw.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+}
+
+function stableNotificationId(item) {
+    const existing = String(item?.id || item?._id || "").trim();
+    if (existing) {
+        return existing;
+    }
+
+    const message = String(item?.message || item?.body || "").trim();
+    const title = String(item?.title || "Notification").trim();
+    const type = String(item?.type || "system").trim();
+    const timestamp = toTimestamp(item?.time || item?.date || item?.createdAt || 0);
+    const dayKey = timestamp ? new Date(timestamp).toISOString().slice(0, 10) : "";
+    const fingerprint = `${type}|${title}|${message}|${dayKey}`;
+    return `noti-${hashString32(fingerprint).toString(36)}`;
+}
+
 function normalizeNotificationItem(item) {
     const message = item.message || item.body || "";
     return {
-        id: item.id || item._id || `noti-${Math.random().toString(16).slice(2, 8)}`,
+        id: stableNotificationId(item),
         title: normalizeDisplayTitle(item.title, {
             fallback: "Notification",
             type: item.type,
@@ -3503,24 +4613,72 @@ function normalizeNotificationItem(item) {
     };
 }
 
-function notificationDedupKey(item) {
-    return `${item.type}:${item.title}:${item.message}:${toTimestamp(item.time)}`;
+function pruneNotificationReads(readMap) {
+    const map = readMap && typeof readMap === "object" ? readMap : {};
+    const now = Date.now();
+    const next = {};
+    for (const [id, value] of Object.entries(map)) {
+        const timestamp = toTimestamp(value);
+        if (timestamp && (now - timestamp) <= NOTIFICATION_RETENTION_MS) {
+            next[id] = timestamp;
+        }
+    }
+    return next;
+}
+
+function pruneNotifications(list) {
+    const now = Date.now();
+    return (Array.isArray(list) ? list : [])
+        .filter((item) => {
+            const timestamp = toTimestamp(item?.time);
+            if (!timestamp) {
+                return true;
+            }
+            return (now - timestamp) <= NOTIFICATION_RETENTION_MS;
+        })
+        .sort((a, b) => toTimestamp(b.time) - toTimestamp(a.time))
+        .slice(0, NOTIFICATION_MAX_STORED);
+}
+
+function applyNotificationReadState(list) {
+    const readMap = pruneNotificationReads(state.notificationReads);
+    const records = Array.isArray(list) ? list : [];
+    return records.map((item) => {
+        const id = String(item?.id || "").trim();
+        if (id && readMap[id]) {
+            return { ...item, unread: false };
+        }
+        return item;
+    });
+}
+
+function syncNotificationReadsFromList(readMap, list) {
+    const map = readMap && typeof readMap === "object" ? { ...readMap } : {};
+    const now = Date.now();
+    (Array.isArray(list) ? list : []).forEach((item) => {
+        const id = String(item?.id || "").trim();
+        if (!id) {
+            return;
+        }
+        if (item.unread === false && !map[id]) {
+            map[id] = now;
+        }
+    });
+    return map;
 }
 
 function mergeNotifications(primary, secondary) {
-    const readLookup = new Map(
-        (Array.isArray(secondary) ? secondary : []).map((item) => [notificationDedupKey(item), item?.unread])
-    );
-
-    return uniqueByKey([...primary, ...secondary], notificationDedupKey)
+    const readMap = pruneNotificationReads(state.notificationReads);
+    const merged = uniqueByKey([...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])], (item) => item.id)
         .map((item) => {
-            const key = notificationDedupKey(item);
-            if (readLookup.has(key)) {
-                return { ...item, unread: readLookup.get(key) };
+            const id = String(item?.id || "").trim();
+            if (id && readMap[id]) {
+                return { ...item, unread: false };
             }
             return item;
-        })
-        .sort((a, b) => toTimestamp(b.time) - toTimestamp(a.time));
+        });
+
+    return pruneNotifications(merged);
 }
 
 function normalizeActivity(list) {
@@ -3666,12 +4824,6 @@ function formatRelative(value) {
     return `${Math.floor(diff / (24 * 60 * 60 * 1000))}d ago`;
 }
 
-function createReferralCode(user) {
-    const base = (user?.name || user?.email || "anvi").replace(/[^a-z0-9]/gi, "").toUpperCase();
-    const suffix = ((user?.id || user?.email || "000000").replace(/[^a-z0-9]/gi, "").slice(-6) || "000000").toUpperCase();
-    return `${base.slice(0, 4) || "ANVI"}${suffix}`;
-}
-
 function initialsFromName(name) {
     return String(name || "A")
         .split(" ")
@@ -3709,6 +4861,43 @@ function maskEmail(email) {
     }
 
     return `${visibleStart}${dots}${visibleEnd}@${domain}`;
+}
+
+function boolFrom(value, fallback = false) {
+    if (value === null || value === undefined) {
+        return fallback;
+    }
+
+    if (typeof value === "boolean") {
+        return value;
+    }
+
+    if (typeof value === "number") {
+        return value === 1;
+    }
+
+    if (typeof value === "string") {
+        const raw = value.trim().toLowerCase();
+        if (!raw) {
+            return fallback;
+        }
+
+        if (["true", "1", "yes", "y", "done", "completed", "complete"].includes(raw)) {
+            return true;
+        }
+
+        if (["false", "0", "no", "n", "pending", "incomplete", "not_completed", "not-completed"].includes(raw)) {
+            return false;
+        }
+
+        return fallback;
+    }
+
+    if (typeof value === "object") {
+        return fallback;
+    }
+
+    return Boolean(value);
 }
 
 function numberFrom(...values) {

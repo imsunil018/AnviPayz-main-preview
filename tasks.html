@@ -19,7 +19,136 @@
         <link
             href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
             rel="stylesheet">
-        <link rel="stylesheet" href="css/style.css">
+        <link rel="stylesheet" href="css/style.css?v=20260507-2">
+        <meta name="theme-color" content="#0b1220">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="AnviPayz">
+        <style>
+        /* Mobile app-like polish for Tasks page (scoped) */
+        .tasks-page {
+            scroll-behavior: smooth;
+        }
+
+        .tasks-anchor {
+            scroll-margin-top: calc(116px + env(safe-area-inset-top));
+        }
+
+        .tasks-app-tabs {
+            display: none;
+        }
+
+        html[data-theme="light"] .tasks-app-tabs {
+            background: linear-gradient(180deg, var(--bg-body) 0%, rgba(238, 242, 255, 0.35) 100%);
+        }
+
+        .tasks-app-tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        .tasks-app-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text);
+            font-weight: 700;
+            font-size: 0.92rem;
+            white-space: nowrap;
+            text-decoration: none;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .tasks-app-tab i {
+            font-size: 1.05rem;
+            opacity: 0.95;
+        }
+
+        .tasks-app-tab:active {
+            transform: translateY(1px);
+        }
+
+        @media (max-width: 720px) {
+            .tasks-page {
+                padding-bottom: calc(96px + env(safe-area-inset-bottom));
+            }
+
+            .tasks-app-tabs {
+                position: sticky;
+                top: calc(66px + env(safe-area-inset-top));
+                z-index: 20;
+                display: flex;
+                gap: 10px;
+                padding: 10px 8px;
+                margin: 8px -2px 14px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                background: linear-gradient(180deg, var(--bg-body) 0%, rgba(11, 18, 32, 0.2) 100%);
+                border-bottom: 1px solid var(--border);
+            }
+
+            .mobile-header.compact-mobile-header {
+                position: sticky;
+                top: 0;
+                z-index: 30;
+                padding-top: calc(10px + env(safe-area-inset-top));
+                background: rgba(11, 18, 32, 0.88);
+                background: color-mix(in srgb, var(--bg-body) 80%, transparent);
+                backdrop-filter: blur(14px);
+                border-bottom: 1px solid var(--border);
+            }
+
+            /* App-like: tighter layout + swipeable stats */
+            .tasks-page .tasks-hero {
+                padding: 16px;
+                border-radius: 18px;
+            }
+
+            .tasks-page .tasks-hero-panel {
+                display: none;
+            }
+
+            .tasks-stats-grid {
+                display: flex;
+                gap: 12px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scroll-snap-type: x mandatory;
+                padding: 0 2px;
+            }
+
+            .tasks-stats-grid .stat-card {
+                min-width: 160px;
+                scroll-snap-align: start;
+            }
+
+            .tasks-grid--daily,
+            .tasks-grid--auto {
+                grid-template-columns: 1fr;
+            }
+
+            .tasks-page .task-card,
+            .tasks-page .task-cta-card,
+            .tasks-page .survey-task-card {
+                border-radius: 18px;
+            }
+        }
+
+        @media (max-width: 720px) {
+            html[data-theme="light"] .mobile-header.compact-mobile-header {
+                background: rgba(238, 242, 255, 0.92);
+                background: color-mix(in srgb, var(--bg-body) 84%, transparent);
+            }
+        }
+
+        .tasks-app-tab.is-active {
+            border-color: color-mix(in srgb, var(--primary) 75%, var(--border));
+            background: color-mix(in srgb, var(--primary) 16%, var(--bg-card));
+        }
+        </style>
 
         <link rel="icon" type="image/png" href="favicon.png">
     </head>
@@ -55,7 +184,7 @@
                 </div>
             </aside>
 
-            <main class="main-content page-main">
+            <main class="main-content page-main tasks-page">
                 <div class="mobile-header compact-mobile-header">
                     <button class="icon-btn" id="menu-btn"><i
                             class="ri-menu-line"></i></button>
@@ -107,7 +236,7 @@
                         </div>
                     </div>
                     <div class="tasks-hero-panel">
-                        <div class="tasks-hero-panel-title">Today’s Focus</div>
+                        <div class="tasks-hero-panel-title">Today's Focus</div>
                         <div class="tasks-hero-panel-body">
                             <div class="tasks-hero-panel-item">
                                 <div class="tasks-hero-panel-icon"><i class="ri-shield-star-line"></i></div>
@@ -170,25 +299,26 @@
                             days</div>
                     </div>
                 </div>
-
-                <!-- ?? QUICK TIPS BANNER -->
-                <section class="card"
-                    style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(124, 137, 255, 0.1) 100%); border: 1px solid rgba(59, 130, 246, 0.2); margin-bottom: 1.5rem;">
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <div style="font-size: 1.5rem;">??</div>
+                
+                <!-- Quick tips banner -->
+                <section class="card tasks-tip-card">
+                    <div class="tasks-tip-content">
+                        <div class="tasks-tip-icon"></div>
                         <div>
-                            <div
-                                style="font-weight: 700; color: #3b82f6; font-size: 0.95rem;">Pro
-                                Tip</div>
-                            <div
-                                style="font-size: 0.85rem; color: var(--text-muted);">Complete
-                                all daily tasks to build a streak and maximize
-                                your earnings!</div>
+                            <div class="tasks-tip-title">Pro Tip</div>
+                            <div class="tasks-tip-copy">Complete all daily tasks to build a streak and maximize your earnings!</div>
                         </div>
                     </div>
                 </section>
 
-                <div class="section-title">Daily Tasks</div>
+                <nav class="tasks-app-tabs" aria-label="Task sections">
+                    <a class="tasks-app-tab" href="#section-daily"><i class="ri-repeat-line"></i>Daily</a>
+                    <a class="tasks-app-tab" href="#section-hot"><i class="ri-flashlight-line"></i>Hot</a>
+                    <a class="tasks-app-tab" href="#section-survey"><i class="ri-survey-line"></i>Survey</a>
+                    <a class="tasks-app-tab" href="#section-history"><i class="ri-time-line"></i>History</a>
+                </nav>
+
+                <div id="section-daily" class="section-title tasks-anchor">Daily Tasks</div>
 
                 <div class="tasks-grid tasks-grid--daily">
                     <div class="card task-cta-card">
@@ -198,7 +328,7 @@
                             </div>
                             <div class="list-info">
                                 <div class="list-title">Daily Check-in</div>
-                                <div class="list-sub">Log in daily to earn coins ??</div>
+                                <div class="list-sub">Log in daily to earn coins.</div>
                             </div>
                         </div>
                         <div class="task-card-bottom">
@@ -221,14 +351,14 @@
                             </div>
                             <div class="list-info">
                                 <div class="list-title">Watch Tutorial</div>
-                                <div class="list-sub">Watch a quick 10-second video ??</div>
+                                <div class="list-sub">Watch a quick 10-second video.</div>
                             </div>
                         </div>
                         <div class="task-card-bottom">
                             <div class="task-card-badges">
                                 <span class="task-pill reward"><i
-                                        class="ri-coin-line"></i>20 Points</span>
-                                <span class="task-pill task-pill--warning"><i class="ri-time-line"></i>2 min</span>
+                                        class="ri-coin-line"></i>15 Points</span>
+                                <span class="task-pill task-pill--warning"><i class="ri-time-line"></i>10 sec</span>
                             </div>
                             <button id="btn-watch-video"
                                 class="btn-primary task-card-action">
@@ -244,7 +374,7 @@
                             </div>
                             <div class="list-info">
                                 <div class="list-title">Spin & Win</div>
-                                <div class="list-sub">Spin daily for bonus rewards! ??</div>
+                                <div class="list-sub">Spin daily for bonus rewards!</div>
                             </div>
                         </div>
                         <div class="task-card-bottom">
@@ -262,7 +392,7 @@
                     <div id="daily-task-container"></div>
                 </div>
 
-                <div class="section-title section-title--spaced">Hot
+                <div id="section-hot" class="section-title section-title--spaced tasks-anchor">Hot
                     Tasks</div>
 
                 <div id="admin-task-container" class="tasks-grid tasks-grid--auto">
@@ -272,7 +402,7 @@
                     </div>
                 </div>
 
-                <div class="section-title section-title--spaced">Survey
+                <div id="section-survey" class="section-title section-title--spaced tasks-anchor">Survey
                     Tasks <span
                         class="badge-soon"
                         style="background: #8b5cf6; color: white;">New</span></div>
@@ -290,7 +420,7 @@
                                 <div class="list-title">Product Feedback
                                     Survey</div>
                                 <div class="list-sub">Share your opinion &
-                                    earn rewards • <span
+                                    earn rewards â€¢ <span
                                         style="color: #8b5cf6; font-weight: 600;">50
                                         Coins</span></div>
                             </div>
@@ -318,7 +448,7 @@
                             <div class="list-info">
                                 <div class="list-title">User Experience
                                     Survey</div>
-                                <div class="list-sub">Help us improve • <span
+                                <div class="list-sub">Help us improve â€¢ <span
                                         style="color: #8b5cf6; font-weight: 600;">75
                                         Coins</span></div>
                             </div>
@@ -346,7 +476,7 @@
                             <div class="list-info">
                                 <div class="list-title">Market Research
                                     Survey</div>
-                                <div class="list-sub">Quick 2-min survey •
+                                <div class="list-sub">Quick 2-min survey â€¢
                                     <span
                                         style="color: #8b5cf6; font-weight: 600;">100
                                         Coins</span></div>
@@ -395,7 +525,7 @@
                     </div>
                 </div>
 
-                <div class="section-title section-title--spaced">Completed
+                <div id="section-history" class="section-title section-title--spaced tasks-anchor">Completed
                     History</div>
 
                 <div id="task-history-list" class="stack-list">
@@ -406,13 +536,13 @@
                 </div>
 
                 <footer class="app-footer">
-                    <a href="privacy.html" target="_blank">Privacy Policy</a>
-                    <span>•</span>
-                    <a href="terms.html" target="_blank">Terms & Conditions</a>
-                    <span>•</span>
-                    <a href="refund.html" target="_blank">Refund Policy</a>
-                    <span>•</span>
-                    <a href="disclaimer.html" target="_blank">Disclaimer</a>
+                    <a href="privacy.html">Privacy Policy</a>
+                    <span>&bull;</span>
+                    <a href="terms.html">Terms & Conditions</a>
+                    <span>&bull;</span>
+                    <a href="refund.html">Refund Policy</a>
+                    <span>&bull;</span>
+                    <a href="disclaimer.html">Disclaimer</a>
                 </footer>
             </main>
 
@@ -434,7 +564,7 @@
 
         <script src="config.js"></script>
 
-        <script type="module" src="js/auth.js?v=20260330"></script>
+        <script defer src="js/auth.js?v=20260511-1"></script>
     </body>
 
 </html>
