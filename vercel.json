@@ -1,0 +1,30 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "other",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "buildCommand": null,
+  "installCommand": null,
+  "outputDirectory": ".",
+  "headers": [
+    {
+      "source": "/(.*)\\.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(css|js)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(png|jpg|jpeg|webp|gif|svg|ico|woff2|woff|ttf)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=2592000" }
+      ]
+    }
+  ]
+}
+

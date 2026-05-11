@@ -81,11 +81,60 @@ app.use(cors({
     credentials: true
 }));
 
+// Serve static assets early so they don't pay the cost of API middleware.
+// Cache aggressively for versioned assets (e.g. `?v=...`) while keeping HTML uncached.
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+app.use(express.static(__dirname, {
+    etag: true,
+    lastModified: true,
+    fallthrough: true,
+    maxAge: 0,
+    setHeaders(res, filePath) {
+        try {
+            const ext = path.extname(filePath).toLowerCase();
+
+            if (ext === '.html') {
+                res.setHeader('Cache-Control', 'no-store');
+                return;
+            }
+
+            const url = String(res.req?.originalUrl || res.req?.url || '');
+            const isVersioned = /[?&]v=/.test(url);
+
+            // Versioned JS/CSS can be cached for a long time safely.
+            if (isVersioned && (ext === '.js' || ext === '.css')) {
+                res.setHeader('Cache-Control', `public, max-age=${Math.floor(ONE_YEAR_MS / 1000)}, immutable`);
+                return;
+            }
+
+            // Other static assets: cache for 30 days in production, otherwise no-store.
+            if (NODE_ENV === 'production') {
+                if (ext === '.js' || ext === '.css') {
+                    res.setHeader('Cache-Control', `public, max-age=${Math.floor(ONE_HOUR_MS / 1000)}`);
+                    return;
+                }
+
+                if (ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.webp' || ext === '.gif' || ext === '.svg' || ext === '.ico' || ext === '.woff2' || ext === '.woff' || ext === '.ttf') {
+                    res.setHeader('Cache-Control', `public, max-age=${Math.floor(THIRTY_DAYS_MS / 1000)}`);
+                    return;
+                }
+            }
+
+            res.setHeader('Cache-Control', 'no-store');
+        } catch (_) {
+            // Ignore header failures; defaults will apply.
+        }
+    }
+}));
+
 const GLOBAL_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const GLOBAL_RATE_LIMIT_MAX = 300;
 const globalRateLimitStore = new Map();
 
-app.use((req, res, next) => {
+app.use('/api', (req, res, next) => {
     const key = String(req.ip || req.connection?.remoteAddress || 'global');
     const now = Date.now();
     const recent = (globalRateLimitStore.get(key) || []).filter((ts) => now - ts < GLOBAL_RATE_LIMIT_WINDOW_MS);
@@ -98,21 +147,33 @@ app.use((req, res, next) => {
     globalRateLimitStore.set(key, recent);
     next();
 });
-app.use(express.json());
+app.use('/api', express.json());
 
-app.use((req, res, next) => {
-    console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
-    next();
-});
+if (NODE_ENV !== 'production') {
+    app.use('/api', (req, res, next) => {
+        console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+        next();
+    });
+}
 
-app.use(async (req, res, next) => {
+let deletionSweepInFlight = false;
+app.use('/api', (req, res, next) => {
     try {
-        if (Date.now() - lastDeletionSweepAt > 10 * 60 * 1000) {
+        const due = Date.now() - lastDeletionSweepAt > 10 * 60 * 1000;
+        if (due && !deletionSweepInFlight) {
+            deletionSweepInFlight = true;
             lastDeletionSweepAt = Date.now();
-            await runScheduledDeletionSweep();
+            Promise.resolve()
+                .then(() => runScheduledDeletionSweep())
+                .catch((error) => {
+                    console.warn('Scheduled deletion sweep failed:', error?.message || String(error));
+                })
+                .finally(() => {
+                    deletionSweepInFlight = false;
+                });
         }
     } catch (error) {
-        console.warn('Scheduled deletion sweep failed:', error.message);
+        console.warn('Scheduled deletion sweep scheduling failed:', error?.message || String(error));
     }
 
     next();
@@ -1785,7 +1846,7 @@ app.get('/api/admin/activity', async (req, res) => {
     }
 });
 
-app.use(express.static(__dirname));
+// Static assets are served at the top of the file for performance.
 
 const PORT = parseInt(process.env.PORT, 10) || 5050;
 const HOST = process.env.HOST || '0.0.0.0';
